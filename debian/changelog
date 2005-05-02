@@ -1,0 +1,6 @@
+codeville (0.1.10-0) experimental; urgency=low
+
+  * Initial package release. Closes: #280209
+
+ -- Chad Walstrom <chewie@debian.org>  Mon,  2 May 2005 12:26:06 -0500
+

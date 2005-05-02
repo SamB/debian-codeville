@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Debian rules file for cheetah
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+################################################################################
+# CDBS File Inclusions and Variable Declarations
+################################################################################
+include /usr/share/cdbs/1/rules/debhelper.mk
+include /usr/share/cdbs/1/rules/simple-patchsys.mk
+include /usr/share/cdbs/1/class/python-distutils.mk
+
+DEB_PYTHON_INSTALL_ARGS_ALL = --no-compile -O0 --install-purelib=/usr/lib/site-python
+
+# codeville tries to install documentation in the Right Place(TM), but
+# gets it wrong for Debian.  Already included the LICENSE.txt in the
+# copyright file.
+common-install-indep::
+	mv debian/codeville/usr/share/doc/Codeville-0.1.10/cdvserver.conf.sample \
+		debian/codeville/usr/share/doc/codeville/
+	rm -rf debian/codeville/usr/share/doc/Codeville-0.1.10
+
+clean::
+	-find -name \*.pyc -exec rm \{\} \;

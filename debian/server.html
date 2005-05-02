@@ -1,0 +1,79 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+        "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<title>Codeville - Server reference</title>
+<link rel="stylesheet" href="/css/codevilleDark.css" type="text/css" media="screen">
+</head>
+<body>
+
+<div class="navContainer">
+<ul class="nav">
+	<li id="first"><a href="/">Home</a></li>
+	<li><a href="/#download">Download</a></li>
+	<li><a href="/#news">News</a></li>
+	<li><a href="/docs/">Docs</a></li>
+	<li id="last"><a href="/docs/todo.php">Todo</a></li>
+</ul>
+</div>
+<h1>Codeville</h1>
+
+<h2>Server reference</h2>
+
+<h3>Unix and OS X</h3>
+
+<p>
+Config file options:<br>
+-c &lt;configfile&gt;<br>
+-n (no config file)
+</p>
+
+<p>
+Files and Directories:<br>
+-f &lt;datadir&gt; (where all the database files and password file go)<br>
+-l &lt;logfile&gt; (server output goes here when daemonized)<br>
+-p &lt;pidfile&gt;
+<p>
+
+<p>
+Control options:<br>
+-b (start server in backup mode)<br>
+-d (don&quot;t daemonize, won&quot;t write pidfile or logfile)<br>
+-u &lt;user&gt; (run as the given user, must be root to do this)<br>
+-r (rebuild internal data structures on startup)
+</p>
+
+<p>
+By default, the server will look for a config file in /etc/cdvserver.conf.
+The distributed version includes the defaults for the various options commented
+out. Command line options take precedence over the config file.
+</p>
+
+<h3>Windows</h3>
+The above options largely apply, except the server does not look for a config
+file by default, does not daemonize and assumes the data dir is the current
+directory.
+
+<h3>Config File</h3>
+The [control] section of the config file should be self-explanatory.<br>
+Key/value pairs in [post-commit] allow you to execute scripts in response to
+checkins. Keys are regular expressions, matched against the repository name.
+Values are scripts into which some XML describing the checkin will be sent
+as stdin. The XML is the same as the output of describe with the -x option,
+only there is also a &lt;repository&gt; tag in the server generated version.
+
+<p>
+&#8212; <a href="http://bitconjurer.org/">Bram</a> and <a href="mailto:rcohen@snurgle.removeme.org">Ross</a>
+</p>
+
+<div class="navContainer">
+<ul class="nav">
+	<li id="first"><a href="/">Home</a></li>
+	<li><a href="/#download">Download</a></li>
+	<li><a href="/#news">News</a></li>
+	<li><a href="/docs/">Docs</a></li>
+	<li id="last"><a href="/docs/todo.php">Todo</a></li>
+</ul>
+</div>
+</body>
+</html>
