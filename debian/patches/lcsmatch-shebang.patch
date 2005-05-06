@@ -1,0 +1,7 @@
+--- orig/Codeville/lcsmatch.py
++++ mod/Codeville/lcsmatch.py
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env python
+ 
+ # Written by Bram Cohen and Uoti Urpala
+ 

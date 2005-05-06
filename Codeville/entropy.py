@@ -3,20 +3,21 @@
 
 import sys
 
-if sys.platform == 'win32':
-    import winrandom
-    def random_string(bytes):
-        """Generate a random string with the given length."""
-        return winrandom.winrandom(bytes)
-else:
-    dev = None
+try:
+    from os import urandom as random_string
+except ImportError:
+    if sys.platform == 'win32':
+        from winrandom import winrandom as random_string
 
-    def random_string(bytes):
-        """Generate a random string with the given length."""
-        global dev
-        if dev is None:
-            dev = open('/dev/urandom', 'r')
-        return dev.read(bytes)
+    else:
+        dev = None
+
+        def random_string(bytes):
+            """Generate a random string with the given length."""
+            global dev
+            if dev is None:
+                dev = open('/dev/urandom', 'r')
+            return dev.read(bytes)
 
 def random_long(bits):
     """Generate a random long integer with the given number of bits."""
@@ -37,4 +38,3 @@ def long_to_string(i, length=0):
 	i = i >> 8
     s = '\x00' * (length - len(s)) + s
     return s
-

@@ -62,8 +62,8 @@ class Glob:
         return
 
     def _fs_expand(self, local):
-        root_cmp = path.join(self.local, 'CVILLE')
-        filter   = path.join(self.local, 'CVILLE', '')
+        root_cmp = path.join(self.local, '.cdv')
+        filter   = path.join(self.local, '.cdv', '')
 
         root_len   = len(self.local + path.sep)
         filter_len = len(filter)

@@ -22,17 +22,18 @@ def run(args):
         print_help()
         return 1
 
+    noconfig = False
     if platform == 'win32':
         noconfig = True
     else:
-        noconfig = False
         config_file = '/etc/cdvserver.conf'
 
     # do a first pass of the command line to pick up an alternate config
     for (opt, arg) in optlist:
         if opt == '-c':
-            noconfig = False
             config_file = arg
+        if opt == '-f':
+            noconfig = True
 
     config = ConfigParser()
 

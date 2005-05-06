@@ -1,0 +1,19 @@
+codeville (0.1.11-0) experimental; urgency=low
+
+  In this version of Codeville, the biggest news for Debian is
+  probably the license change, which is now a BSD style license
+  instead of the Open Source License v2.0.
+
+  Usability enhancements were introduced upstream, as well as a new
+  merge algorithm and performance enhancements.
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !! You must run cdvupgrade on any clients and servers for this    !!
+  !! release. Note that it is much faster to do fresh checkouts     !!
+  !! than to upgrade clients.                                       !!
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  Read the upstream changelog for more details.
+
+ -- Chad Walstrom <chewie@debian.org>  Fri,  6 May 2005 10:26:50 -0500
+

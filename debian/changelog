@@ -1,3 +1,13 @@
+codeville (0.1.11-0) experimental; urgency=low
+
+  * New upstream.
+  * debian/NEWS: New file explaining important changes.
+  * debian/copyright: Upstream license changed to BSD style!
+  * debian/patches/lcsmatch-shebang.patch: Added to shut lintian up.
+  * debian/rules: Cleaned up to recognize upstream version.
+
+ -- Chad Walstrom <chewie@debian.org>  Fri,  6 May 2005 11:40:18 -0500
+
 codeville (0.1.10-0) experimental; urgency=low
 
   * Initial package release. Closes: #280209

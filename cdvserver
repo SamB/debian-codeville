@@ -3,6 +3,9 @@
 # Written by Ross Cohen
 # See LICENSE.TXT for license information.
 
+from Codeville.db import VersionMismatchException
+from Codeville.db import check_format_version, check_rebuild_version
+from Codeville.db import write_rebuild_version
 from Codeville.server import ServerHandler, ServerError
 from Codeville.history import rebuild_from_points
 from ConfigParser import ConfigParser
@@ -118,6 +121,14 @@ def run(args):
         print 'Invalid port %s' % config.get('control', 'port')
         return 1
 
+    # make sure we can read the repository format
+    metadata_dir = path.join(config.get('control', 'datadir'), '.cdv')
+    try:
+        check_format_version(metadata_dir)
+    except VersionMismatchException, versions:
+        print "error - expected version %d does not match repository version %d, you probably need to run cdvupgrade." % versions.args
+        return 1
+
     # start the server
     global sh
     try:
@@ -196,9 +207,16 @@ def run(args):
     if rebuild:
         print 'Rebuilding...'
         points = sh.repolistdb.values()
-        txn = sh._txn_begin()
+        txn = sh.txn_begin()
         rebuild_from_points(sh, points, txn)
-        sh._txn_commit(txn)
+        sh.txn_commit(txn)
+        write_rebuild_version(metadata_dir)
+    else:
+        try:
+            check_rebuild_version(metadata_dir)
+        except VersionMismatchException, versions:
+            print "error - auxiliary format %d does not match repository format %d, you need to start the server with -r to rebuild" % versions.args
+            return 1
 
     retval = 0
 

@@ -5,6 +5,9 @@
 
 import binascii
 from Codeville.db import db
+from Codeville.db import VersionMismatchException
+from Codeville.db import check_format_version, check_rebuild_version
+from Codeville.client import cli_init, PathError
 from Codeville.client import add, delete, rename, revert, edit
 from Codeville.client import history, status, diff, describe
 from Codeville.client import update, commit, set_password, rebuild
@@ -16,10 +19,14 @@ from Codeville.history import long_id, short_id
 from Codeville.history import ChangeNotKnown, ChangeNotUnique, ChangeBadRepository
 from getopt import getopt, GetoptError
 import os
+from os import path
 from random import seed
 from sys import argv, exit
 from time import time
 from traceback import print_exc
+
+def run_init(co, opts, args):
+    return cli_init(args)
 
 def run_add(co, opts, args):
     return add(co, args)
@@ -180,21 +187,21 @@ def run_list(co, opts, args):
     return list_repos(co)
 
 def run_set(co, opts, args):
-    txn = co.dbenv.txn_begin()
+    txn = co.txn_begin()
     co.varsdb.put(args[0], args[1], txn=txn)
-    txn.commit()
+    co.txn_commit(txn)
     print 'Variable set'
     return 0
 
 def run_unset(co, opts, args):
-    txn = co.dbenv.txn_begin()
+    txn = co.txn_begin()
     try:
         co.varsdb.delete(args[0], txn=txn)
     except db.DBNotFoundError:
         print 'Variable was not set'
         txn.abort()
         return 1
-    txn.commit()
+    co.txn_commit(txn)
     print 'Variable unset'
     return 0
 
@@ -222,7 +229,9 @@ def run_describe(co, opts, args):
 def run_password(co, opts, args):
     return set_password(co)
 
-commands = {'add':        (run_add,       '',     1, None),
+# the format is (function, optargs, min args, max args)
+commands = {'init':       (run_init,      '',     0, 0),
+            'add':        (run_add,       '',     1, None),
             'rename':     (run_rename,    '',     2, 2),
             'remove':     (run_remove,    '',     1, None),
             'revert':     (run_revert,    'a',    1, None),
@@ -256,7 +265,7 @@ def run_help():
 
 def run(args):
     seed(time() + os.getpid())
-    local, repo, user = None, None, None
+    local, ulocal, repo, user = None, None, None, None
     retval = 1
     try:
         optlist, args = getopt(args, 'p:r:u:')
@@ -265,7 +274,7 @@ def run(args):
         return 1
     for (opt, arg) in optlist:
         if opt == '-p':
-            local = os.path.abspath(arg)
+            ulocal = os.path.abspath(arg)
         elif opt == '-r':
             repo = arg
         elif opt == '-u':
@@ -273,23 +282,6 @@ def run(args):
     if args == []:
         run_help()
         return 1
-    if local is None:
-        local = os.getcwd()
-    try:
-        local = find_co(local)
-    except Exception, msg:
-        print msg
-        return 1
-
-    co = Checkout(local)
-
-    if repo is None:
-        co.repo = co.varsdb.get('repository')
-    else:
-        co.repo = repo
-
-    if user is not None:
-        co.user = user
 
     # parse the command line options
     try:
@@ -315,7 +307,50 @@ def run(args):
               (cname, command[3])
         return 1
 
+    # find the metadata directory
+    if ulocal is None:
+        ulocal = os.getcwd()
     try:
+        local = find_co(ulocal)
+    except PathError, msg:
+        if cname != 'init':
+            print msg
+            return 1
+
+    if cname == 'init':
+        if local != None:
+            print 'error - found existing repository at %s' % (local,)
+            return 1
+        return command[0](None, optlist, [ulocal])
+
+    metadata_dir = path.join(local, '.cdv')
+    try:
+        check_format_version(metadata_dir)
+    except VersionMismatchException, versions:
+        print "error - expected version %d does not match repository version %d, you probably need to run cdvupgrade." % versions.args
+        return 1
+
+    if cname != 'rebuild':
+        try:
+            check_rebuild_version(metadata_dir)
+        except VersionMismatchException, versions:
+            print "error - auxiliary format %d does not match repository format %d, you need to run 'cdv rebuild'" % versions.args
+            return 1
+
+    # run the user's command
+    co = None
+    try:
+        # open the database
+        co = Checkout(local)
+
+        if repo is None:
+            co.repo = co.varsdb.get('repository')
+        else:
+            co.repo = repo
+
+        if user is not None:
+            co.user = user
+
         retval = command[0](co, optlist, args)
     except KeyboardInterrupt:
         print 'Aborting...'
@@ -338,16 +373,16 @@ def run(args):
     return retval
 
 if __name__ == '__main__':
-    #if 0:
-    #    import hotshot, hotshot.stats
-    #    prof = hotshot.Profile("cdv.prof")
-    #    retval = prof.runcall(run, argv[1:])
-    #    prof.close()
-    #    stats = hotshot.stats.load("cdv.prof")
-    #    stats.strip_dirs()
-    #    stats.sort_stats('time', 'calls')
-    #    stats.print_stats()
-    #else:
-    #    retval = run(argv[1:])
-    retval = run(argv[1:])
+    if 0:
+        import hotshot, hotshot.stats
+        prof = hotshot.Profile("cdv.prof")
+        retval = prof.runcall(run, argv[1:])
+        prof.close()
+        stats = hotshot.stats.load("cdv.prof")
+        stats.strip_dirs()
+        stats.sort_stats('time', 'calls')
+        stats.print_stats()
+    else:
+        retval = run(argv[1:])
+    #retval = run(argv[1:])
     exit(retval)

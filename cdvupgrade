@@ -3,256 +3,141 @@
 # Written by Ross Cohen
 # see LICENSE.txt for license information
 
-import binascii
 from Codeville.bencode import bdecode, bencode
-from Codeville.client_helpers import create_handle, gen_diff
-from Codeville.DFS import DFS
-from Codeville.history import sync_history, verify_history, write_changeset
-from Codeville.history import roothandle, rootnode
-from Codeville.history import read_diff, write_diff, write_index
-from Codeville.history import handle_contents_at_point
-from Codeville.history import handle_name_at_point
-from Codeville.history import HistoryError
+from Codeville.client import find_co, Checkout, _rebuild_fndb, PathError
 from Codeville.server import ServerRepository
-import copy
+from Codeville.upgrade import upgrade
+
+import os
 from os import path
-import sha
-from sys import argv, stdout, version_info
-import zlib
+from sys import argv, exit, version_info
 
 assert version_info >= (2,3), "Python 2.3 or higher is required"
 
+def upgrade_client(repo_dir):
+    print "Looks like we're upgrading a client."
 
-def history_deps(node, args):
-    co = args[0]
+    try:
+        local = find_co(repo_dir, 'CVILLE')
+    except PathError:
+        print "Couldn't find checkout, aborting."
+        return 1
 
-    cset = bdecode(co.lcrepo.get(node))
-    cset['precursors'].reverse()
+    old_repo = Checkout(local, metadata_dir='CVILLE', rw=False)
+    # since we're creating a new metadata directory, we can upgrade in place
+    new_repo = Checkout(local, init=True)
 
-    return cset['precursors']
+    txn = new_repo.txn_begin()
 
+    UR = upgrade(old_repo, new_repo, txn)
 
-def name_deps(node, args):
-    handles = args[0]
+    # fix up all the client specific dbs
+    for handle, modtime in old_repo.modtimesdb.items():
+        new_handle = handle
+        if UR.handle_map.has_key(handle):
+            new_handle = UR.handle_map[handle]
+        new_repo.modtimesdb.put(new_handle, modtime, txn=txn)
 
-    if handles.has_key(node) and handles[node].has_key('parent'):
-        parent = handles[node]['parent']
-        if handles.has_key(parent) and handles[parent].has_key('name'):
-            return [parent]
+    for handle, bhinfo in old_repo.editsdb.items():
+        hinfo = bdecode(bhinfo)
+        if hinfo.has_key('parent'):
+            hinfo['parent'] = UR.handle_map[hinfo['parent']]
 
-    return []
+        new_handle = handle
+        if not hinfo.has_key('add'):
+            new_handle = UR.handle_map[handle]
+        else:
+            old_sinfo = old_repo.staticdb.get(handle)
+            new_repo.staticdb.put(new_handle, old_sinfo, txn=txn)
+            new_repo.allnamesdb.put(hinfo['parent'] + hinfo['name'], new_handle, txn=txn)
 
+        new_repo.editsdb.put(new_handle, bencode(hinfo), txn=txn)
 
-old_repo = ServerRepository()
-old_repo._db_init(path.abspath(argv[1]))
-new_repo = ServerRepository()
-new_repo._db_init(path.abspath(argv[2]))
+    for key, value in old_repo.varsdb.items():
+        new_repo.varsdb.put(key, value, txn=txn)
 
-txn = new_repo._txn_begin()
+    _rebuild_fndb(new_repo, txn)
 
-point_map = {}
-handle_map = {}
+    heads = bdecode(old_repo.linforepo.get('heads'))
+    new_heads = [UR.point_map[point] for point in heads]
+    new_repo.linforepo.put('heads', bencode(new_heads), txn=txn)
 
-all_old_handles = {}
-for old_handle in old_repo.staticdb.keys():
-    hinfo = bdecode(old_repo.staticdb.get(old_handle))
-    if hinfo['type'] == 'file':
-        all_old_handles[old_handle] = hinfo
-
-# sort the history
-history_dfs = DFS(history_deps, [old_repo])
-for point in old_repo.lcrepo.keys():
-    history_dfs.search(point)
-ordering = history_dfs.result()
-
-# sort again for better dag construction
-history_dfs = DFS(history_deps, [old_repo])
-ordering.reverse()
-for point in ordering:
-    history_dfs.search(point)
-ordering = history_dfs.result()
-
-assert rootnode == ordering[0]
-
-print "%d changesets to convert" % (len(ordering), )
-
-for point in ordering:
-    indices = {}
-
-    old_cset = bdecode(old_repo.lcrepo.get(point))
-
-    new_cset = {}
-    new_cset['precursors'] = [point_map[pre] for pre in old_cset['precursors']]
-
-    if old_cset.has_key('time'):
-        new_cset['time'] = old_cset['time']
-
-    if old_cset.has_key('user'):
-        new_cset['user'] = old_cset['user']
-
-    # some heuristics for comments and whether this was a server change
-    clean_merge = True
-    force_new_cset = False
-
-    if old_cset.has_key('comment'):
-        clean_merge = False
-        new_cset['comment'] = old_cset['comment'].rstrip()
-        if len(new_cset['comment']):
-            new_cset['comment'] = new_cset['comment'] + '\n'
-
-    elif point == rootnode:
-        pass
-
-    elif old_cset['handles'] != {} or len(old_cset['precursors']) != 2:
-        clean_merge = False
-        new_cset['comment'] = '--- comment inserted by cdvupgrade ---'
-
-    # sort the handles
-    name_dfs = DFS(name_deps, [old_cset['handles']])
-    for old_handle in old_cset['handles'].keys():
-        name_dfs.search(old_handle)
-    handle_list = name_dfs.result()
-
-    clean_merges = {}
-    old_dagdb = old_repo.contents.dagdb
-    for old_handle in all_old_handles.keys():
-        if not old_dagdb.has_key(old_handle + point):
+    for key, value in old_repo.linforepo.items():
+        if not key.startswith('cdv://'):
             continue
+        new_repo.linforepo.put(key, UR.point_map[value], txn=txn)
 
-        hinfo = bdecode(old_dagdb.get(old_handle + point))
-        if hinfo.has_key('handle'):
-            continue
+    # all done! close everything down.
+    old_repo.close()
+    new_repo.txn_commit(txn)
+    new_repo.close()
 
-        if len(hinfo['precursors']) <= 1:
-            continue
+    print """
+The client has been upgraded in place. If things are working, you should
+delete all the old metadata directory by doing:
+rm -rf CVILLE/
+"""
 
-        clean_merges[old_handle] = 1
-        handle_list.append(old_handle)
+    return 0
 
-    new_cset['handles'] = handles = {}
-    for old_handle in handle_list:
-        old_hinfo = None
-        try:
-            old_hinfo = old_cset['handles'][old_handle]
-        except KeyError:
-            old_hinfo = {}
+def upgrade_server(repo_dir):
+    print "Looks like we're upgrading a server."
 
-        # not much has changed
-        new_hinfo = copy.copy(old_hinfo)
+    old_repo = ServerRepository()
+    old_repo._db_init(repo_dir, '', rw=False)
 
-        new_handle = None
-        if handle_map.has_key(old_handle):
-            new_handle = handle_map[old_handle]
+    # since we're creating a new metadata directory, we can upgrade in place
+    os.makedirs(path.join(repo_dir, '.cdv'))
+    new_repo = ServerRepository()
+    new_repo._db_init(repo_dir)
 
-        # fixup the parent pointers
-        if old_hinfo.has_key('parent'):
-            new_hinfo['parent'] = handle_map[old_hinfo['parent']]
+    txn = new_repo.txn_begin()
 
-        if old_hinfo.has_key('hash') or clean_merges.has_key(old_handle):
-            # figure out what the file is supposed to look like now
-            try:
-                lines = handle_contents_at_point(old_repo, old_handle, point, None)['lines']
-            except HistoryError:
-                print '\n' + binascii.hexlify(point)
-                print handle_name_at_point(old_repo, old_handle, point, None)
-                raise
+    UR = upgrade(old_repo, new_repo, txn)
 
-            # if the file is being added, there are no precursors
-            precursors = []
-            if new_handle is not None:
-                precursors = new_cset['precursors']
+    # write the new repository heads
+    for repo, head in old_repo.repolistdb.items():
+        new_repo.repolistdb.put(repo, UR.point_map[head], txn=txn)
 
-            # generate the diff against the new repo
-            dinfo = gen_diff(new_repo, new_handle, precursors, lines, txn)
-            if old_hinfo.has_key('add'):
-                dinfo['add'] = 1
+    old_repo.close()
+    new_repo.txn_commit(txn)
+    new_repo.close()
 
-            if dinfo is not None:
-                diff = bencode(dinfo)
-                new_hinfo['hash'] = sha.new(diff).digest()
+    print """
+The server has been upgraded in place. If things are working, you should
+delete all the old database files by doing:
+rm -rf *.db log.* contents/
+"""
 
-                # if this used to be a clean merge, we have to replace it
-                if not old_cset.has_key(old_handle) or not old_cset[old_handle].has_key('hash'):
-                    force_new_cset = True
+    return 0
 
-            elif new_hinfo.has_key('hash'):
-                del new_hinfo['hash']
+def run():
+    retval = 0
 
-            # sanity check
-            if new_handle is None:
-                assert old_hinfo.has_key('add')
-                assert old_hinfo['add']['type'] == 'file'
+    repo_dir = None
+    if len(argv) < 2:
+        repo_dir = os.getcwd()
+    else:
+        repo_dir = path.abspath(argv[1])
 
-            # if the file is new, we have to create the handle before writing
-            # the diff
-            if old_hinfo.has_key('add'):
-                assert new_handle is None
-                new_handle = create_handle(new_cset['precursors'], new_hinfo)
-                handle_map[old_handle] = new_handle
+    if path.exists(path.join(repo_dir, 'codeville_repository')):
+        retval = upgrade_server(repo_dir)
+    else:
+        retval = upgrade_client(repo_dir)
 
-            # write out the new diff
-            if new_hinfo.has_key('hash'):
-                zdiff = zlib.compress(diff, 9)
-                indices[new_handle] = write_diff(new_repo, new_handle, zdiff, txn)
+    return 0
 
-        elif old_hinfo.has_key('add'):
-            assert old_hinfo['add']['type'] == 'dir'
-            assert new_handle is None
 
-            new_handle = create_handle(new_cset['precursors'], new_hinfo)
-            handle_map[old_handle] = new_handle
-
-        if new_hinfo != {}:
-            handles[new_handle] = new_hinfo
-
-    # if it used to be a clean merge, preserve the line of clean merge heads
-    index_point = None
-    if clean_merge and force_new_cset:
-        forced_cset = new_cset
-
-        forced_cset['comment'] = '--- change created by cdvupgrade ---'
-
-        bforced_cset = bencode(forced_cset)
-        forced_point = sha.new(bforced_cset).digest()
-        new_repo.lcrepo.put(forced_point, bforced_cset, txn=txn)
-
-        index_point = forced_point
-
-        new_cset = {'precursors': [forced_cset['precursors'][0], forced_point],
-                    'user':       forced_cset['user'],
-                    'time':       forced_cset['time'],
-                    'handles':    {}}
-
-    # calculate the new point name and write it out
-    bnew_cset = bencode(new_cset)
-    new_point = sha.new(bnew_cset).digest()
-    new_repo.lcrepo.put(new_point, bnew_cset, txn=txn)
-
-    point_map[point] = new_point
-
-    if index_point is None:
-        index_point = new_point
-
-    # now that we know the new point name, write out the indices
-    for new_handle, index in indices.items():
-        write_index(new_repo, index_point, new_handle, index, txn)
-
-    # diff generation depends on history syncing
-    named, modified = sync_history(new_repo, new_point, txn)
-    verify_history(new_repo, new_point, named, [], txn)
-
-    for new_handle in modified:
-        handle_contents_at_point(new_repo, new_handle, new_point, txn)
-
-    stdout.write('.')
-    stdout.flush()
-
-# write the new repository heads
-for repo, head in old_repo.repolistdb.items():
-    new_repo.repolistdb.put(repo, point_map[head], txn=txn)
-
-assert rootnode == point_map[ordering[0]]
-
-old_repo.close()
-new_repo._txn_commit(txn)
-new_repo.close()
+if __name__ == '__main__':
+    if 0:
+        import hotshot, hotshot.stats
+        prof = hotshot.Profile("cdvupgrade.prof")
+        retval = prof.runcall(run)
+        prof.close()
+        stats = hotshot.stats.load("cdvupgrade.prof")
+        stats.strip_dirs()
+        stats.sort_stats('time', 'calls')
+        stats.print_stats()
+    else:
+        retval = run()
+    exit(retval)

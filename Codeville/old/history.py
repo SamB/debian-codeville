@@ -1,11 +1,12 @@
 # Written by Bram Cohen and Ross Cohen
 # see LICENSE.txt for license information
 
-from bencode import bdecode, bencode
+from Codeville.bencode import bdecode, bencode
 import binascii
-from db import db
-from merge import MergeError, replay
+from Codeville.db import db
+from merge import find_conflict, find_conflict_multiple_safe, MergeError, replay
 from os import path
+from sets import Set
 from sha import sha
 import struct
 from time import localtime, strftime
@@ -24,34 +25,19 @@ def dmerge(da, db):
     return dc.keys()
 
 def rename_conflict_check(linfo, rinfo):
-    def _is_applied(line_points, points):
-        assert list == type(line_points)
-        for p in line_points:
-            if p in points:
-                return True
-        return False
-
-    # if we're merging, maybe nothing is different. this shields the root
-    # directory from causing problems
-    if linfo == rinfo:
-        return ('local', linfo['rename point'])
-
-    lapplied = _is_applied(linfo['rename point'], rinfo['points'])
-    rapplied = _is_applied(rinfo['rename point'], linfo['points'])
-
-    try:
-        if     linfo['name'] == rinfo['name'] and \
-               linfo['parent'] == rinfo['parent']:
-            return ('local', dmerge(linfo['rename point'], rinfo['rename point']))
-    except KeyError:
-        assert linfo['rename point'] == rinfo['rename point'] == [rootnode]
-        raise HistoryError, 'cannot rename root directory'
-
-    if rapplied and not lapplied:
-        return ('local', linfo['rename point'])
-    if not rapplied and lapplied:
-        return ('remote', rinfo['rename point'])
-
+    if linfo['name'] == rinfo['name']:
+        try:
+            if linfo['parent'] == rinfo['parent']:
+                return ('local', dmerge(linfo['rename point'], rinfo['rename point']))
+        except KeyError:
+            assert linfo['rename point'] == rinfo['rename point'] == [rootnode]
+            return ('local', linfo['rename point'])
+    for i in rinfo['rename point']:
+        if i in linfo['points']:
+            return ('local', linfo['rename point'])
+    for i in linfo['rename point']:
+        if i in rinfo['points']:
+            return ('remote', rinfo['rename point'])
     return ('conflict', None)
 
 def _name_use_count(co, state, point, func, txn):
@@ -123,29 +109,23 @@ def _is_ancestor(co, ancestor, points, txn):
     ainfo = db_get(co, co.branchmapdb, ancestor, txn)
     points = points[:]
     state = {}
-
     while len(points):
         pnext = points.pop()
         if pnext == ancestor:
             return 1
-        # if it's in state, then we've already walked it
-        if pnext in state:
+        if state.has_key(pnext):
             continue
         state[pnext] = 1
         #pinfo = bdecode(co.branchmapdb.get(pnext, txn=txn))
         pinfo = db_get(co, co.branchmapdb, pnext, txn)
         if pinfo['generation'] <= ainfo['generation']:
             continue
-        ps = pinfo['precursors'][:]
-        ps.reverse()
-        points.extend(ps)
-
+        points.extend(pinfo['precursors'])
     return 0
 
 def read_diff(co, handle, point, txn):
     hinfo = bdecode(co.contents.dagdb.get(handle + point, txn=txn))
     hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'rb')
-    #hfile = open(path.join(co.cpath, 'diffs'), 'rb')
     diff = _read_diff(hinfo, hfile)
     hfile.close()
     return diff
@@ -165,12 +145,9 @@ def write_diff(co, handle, diff, txn):
     try:
         fend = struct.unpack('<I', cdagdb.get(handle, txn=txn))[0]
         hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'r+b')
-        #fend = struct.unpack('<I', cdagdb.get('diffend', txn=txn))[0]
-        #hfile = open(path.join(co.cpath, 'diffs'), 'r+b')
     except TypeError:
         fend = 0
         hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'wb')
-        #hfile = open(path.join(co.cpath, 'diffs'), 'wb')
 
     hfile.seek(fend)
     hfile.write(diff)
@@ -178,10 +155,21 @@ def write_diff(co, handle, diff, txn):
     index = {'offset': fend, 'length': len(diff)}
     fend += index['length']
     cdagdb.put(handle, struct.pack('<I', fend), txn=txn)
-    #cdagdb.put('diffend', struct.pack('<I', fend), txn=txn)
     return index
 
-# This should be merged with write_diff()
+def _write_diff(co, hfile, handle, diff, txn):
+    cdagdb = co.contents.dagdb
+    try:
+        fend = struct.unpack('<I', cdagdb.get(handle, txn=txn))[0]
+    except (db.DBNotFoundError, TypeError):
+        fend = 0
+    hfile.seek(fend)
+    hfile.write(diff)
+    index = {'offset': fend, 'length': len(diff)}
+    fend += index['length']
+    cdagdb.put(handle, struct.pack('<I', fend), txn=txn)
+    return index
+
 def write_index(co, point, handle, index, txn):
     cdagdb = co.contents.dagdb
     try:
@@ -190,50 +178,6 @@ def write_index(co, point, handle, index, txn):
     except (db.DBNotFoundError, TypeError):
         old_index = {'handle': index}
     cdagdb.put(handle + point, bencode(old_index), txn=txn)
-
-class WriteDiff:
-    def __init__(self, co, handle, txn):
-        self.co = co
-        self.handle = handle
-        self.txn = txn
-        self.indices = []
-
-        cdagdb = co.contents.dagdb
-        fname = path.join(self.co.cpath, binascii.hexlify(handle))
-        #fname = path.join(self.co.cpath, 'diffs')
-        try:
-            self.fend = struct.unpack('<I', cdagdb.get(handle, txn=txn))[0]
-            #self.fend = struct.unpack('<I', cdagdb.get('diffend', txn=txn))[0]
-            self.hfile = open(fname, 'r+b')
-        except (db.DBNotFoundError, TypeError):
-            self.fend = 0
-            self.hfile = open(fname, 'wb')
-        self.hfile.seek(self.fend)
-        return
-
-    def write(self, diff, point):
-        self.hfile.write(diff)
-        self.indices.append(({'offset': self.fend, 'length': len(diff)}, point))
-        self.fend += len(diff)
-        return
-
-    def close(self):
-        self.hfile.close()
-
-        # update where to write next time
-        cdagdb = self.co.contents.dagdb
-        cdagdb.put(self.handle, struct.pack('<I', self.fend), txn=self.txn)
-        #cdagdb.put('diffend', struct.pack('<I', self.fend), txn=self.txn)
-
-        # write out the indices
-        for index, point in self.indices:
-            try:
-                old_index = bdecode(cdagdb.get(self.handle + point, txn=self.txn))
-                old_index['handle'] = index
-            except (db.DBNotFoundError, TypeError):
-                old_index = {'handle': index}
-            cdagdb.put(self.handle + point, bencode(old_index), txn=self.txn)
-        return
 
 def write_changeset(co, point, cset, txn):
     co.lcrepo.put(point, cset, txn=txn)
@@ -422,6 +366,7 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
     bminfo = db_get(co, co.branchmapdb, point, txn)
     bnum = struct.pack('>II', bminfo['branch'], bminfo['branchnum'])
 
+    clean_merges = []
     for handle in handles:
         precursors = simplify_precursors(co, handle, changedbs, pres, txn)[0]
 
@@ -431,9 +376,8 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
                                       cset['handles'][handle], txn)
         if mdinfo['handle'] == {}:
             del mdinfo['handle']
-            # clean merges are only valid for deletes
-            # XXX: will be caught by a later check
-            #assert len(precursors) == 1
+            if len(precursors) > 1:
+                clean_merges.append(handle)
         mdinfo['precursors'] = precursors
         if precursors == []:
             assert cset['handles'][handle].has_key('add')
@@ -441,6 +385,8 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
         dagdb.put(handle + point, bencode(mdinfo), txn=txn)
         indexdb.put(handle + bnum, point, txn=txn)
 
+    if len(clean_merges) > 0:
+        changedbs.mergedb.put(point, bencode(clean_merges), txn=txn)
     return
 
 def simplify_precursors(co, handle, changedbs, pres, txn):
@@ -448,9 +394,18 @@ def simplify_precursors(co, handle, changedbs, pres, txn):
     dagdb = changedbs.dagdb
     precursors, indices = [], []
     for i in xrange(len(pres)):
-        last = handle_last_modified(co, changedbs, handle, pres[i], txn, opt=True)
+        last = handle_last_modified(co, changedbs, handle, pres[i], txn)
         if last is None:
             continue
+
+        # XXX: this is correct, but breaks old history
+        if 0:
+            pinfo = bdecode(dagdb.get(handle + last, txn=txn))
+            if not pinfo.has_key('handle') and len(pinfo['precursors']) == 1:
+                last = handle_last_modified(co, changedbs, handle,
+                                            pinfo['precursors'][0][0], txn)
+                if last is None:
+                    continue
 
         precursors.append(last)
         indices.append(i)
@@ -556,35 +511,32 @@ def handles_in_branch(co, lpoints, bpoints, txn, cache=None, deleted_modified=Fa
                 if not deleted_modified:
                     deleted[handle] = 1
 
-        points.extend(pinfo['precursors'])
+        # XXX: afaik, this is only an issue for ambiguous clean merges, which
+        # don't happen with name operations. requires more thought.
+        if co.contents.mergedb.has_key(pnext, txn):
+            clean_merges = bdecode(co.contents.mergedb.get(pnext, txn=txn))
+            for handle in clean_merges:
+                modified[handle] = 1
+            # XXX: check for deletes?
 
+        points.extend(pinfo['precursors'])
     for handle in deleted.keys():
         if modified.has_key(handle):
             del modified[handle]
     return (named.keys(), modified.keys())
 
-def handle_last_modified(co, changedbs, handle, change, txn, opt=False):
+def handle_last_modified(co, changedbs, handle, change, txn):
     indexdb = changedbs.indexdb
     dagdb   = changedbs.dagdb
 
-    def _optimize(retval):
-        pinfo = bdecode(dagdb.get(handle + retval, txn=txn))
-        if not pinfo.has_key('handle') and len(pinfo['precursors']) == 1:
-            retval = handle_last_modified(co, changedbs, handle,
-                                          pinfo['precursors'][0][0], txn)
-        return retval
-
     if dagdb.has_key(handle + change, txn):
-        if opt == True:
-            return _optimize(change)
         return change
-
     #hinfo = bdecode(co.branchmapdb.get(change, txn=txn))
     hinfo = db_get(co, co.branchmapdb, change, txn)
     bbranch, bnum = int(hinfo['branch']), hinfo['branchnum']
     retval = None
     cursor = indexdb.cursor(txn=txn)
-    while True:
+    while 1:
         branchpoint = struct.pack('>20sII', handle, bbranch, bnum)
         try:
             foo = cursor.set_range(branchpoint)
@@ -618,12 +570,6 @@ def handle_last_modified(co, changedbs, handle, change, txn, opt=False):
             break
     cursor.close()
 
-    # optimization step. we may have gotten an artifact of the indexing
-    # structure. because of how the mini-dags are constructed, this can be
-    # corrected by following a single precursor.
-    if retval is not None and opt == True:
-        return _optimize(retval)
-
     return retval
 
 def _print_indexdb(co, indexdb, handle, txn):
@@ -632,7 +578,7 @@ def _print_indexdb(co, indexdb, handle, txn):
     foo = cursor.set_range(handle)
     while foo != None:
         key, value = foo
-        nhandle, branch, num = struct.unpack('>20sII', key)
+        nhandle, branch, num = struct.unpack('<20sII', key)
         if handle != nhandle:
             break
         print "%d, %d" % (branch, num)
@@ -656,65 +602,55 @@ def __handle_name_at_point(co, handle, point, txn, dochecks=0):
         return None
     return _handle_name_at_point(co, handle, change, txn, dochecks=dochecks)
 
-def _handle_name_from_precursors(precursors, resolution, point):
-    if resolution.has_key('delete'):
-        resolution.update(precursors[0])
-        return
-
-    resolution['rename point'] = []
+def _handle_name_from_precursors(precursors, resolved):
+    state = {}
     for pre in precursors:
+        if state == {}:
+            state = pre.copy()
+            continue
         if pre.has_key('delete'):
-            resolution.update(pre)
-            return
-        if     pre['name'] == resolution['name'] and \
-               pre['parent'] == resolution['parent']:
-            assert list == type(pre['rename point'])
-            resolution['rename point'].extend(pre['rename point'])
-
-    if resolution['rename point'] == []:
-        resolution['rename point'] = [point]
-        return
-
-    # figure out the whether we should assign a new rename point. this handles
-    # 2 cases:
-    # 1) ambiguous merge picking the line points of an ancestor
-    # 2) ancestors are A and B where B should win, but user reassigned to A
-    for pre in precursors:
-        outcome, rename_point = rename_conflict_check(resolution, pre)
-        if outcome != 'local':
-            resolution['rename point'] = [point]
-            break
-
-    return
+            return pre
+        outcome, rename_point = rename_conflict_check(state, pre)
+        if not resolved and outcome == 'conflict':
+            raise HistoryError, 'double name conflict'
+        elif outcome == 'remote':
+            state['name'] = pre['name']
+            state['parent'] = pre['parent']
+        state['rename point'] = rename_point
+        state['points'] = dmerge(state['points'], pre['points'])
+    return state
 
 def _handle_name_at_point(co, handle, point, txn, dochecks=0):
+    def walk_precursors(cset, dochecks):
+        precursors, points = [], [point]
+        for pre, index in cset['precursors']:
+            foo = _handle_name_at_point(co, handle, pre, txn, dochecks=dochecks)
+            if foo is None:
+                continue
+            points = dmerge(points, foo['points'])
+            precursors.append(foo)
+        return precursors, points
+
     cset = bdecode(co.names.dagdb.get(handle + point, txn=txn))
-
-    precursors, points = [], [point]
-    for pre, index in cset['precursors']:
-        pre_name = _handle_name_at_point(co, handle, pre, txn, dochecks=dochecks)
-        if pre_name is None:
-            continue
-        points = dmerge(points, pre_name['points'])
-        precursors.append(pre_name)
-
-    state = {}
     if not cset.has_key('handle'):
-        if len(cset['precursors']) != 1:
-            raise HistoryError, 'implicit name merges not permitted'
-        state = precursors[0]
+        precursors, points = walk_precursors(cset, dochecks)
+        state = _handle_name_from_precursors(precursors, 0)
     elif cset['handle'].has_key('delete'):
+        precursors, points = walk_precursors(cset, dochecks)
+        state = _handle_name_from_precursors(precursors, 1)
         state['delete'] = 1
     else:
+        precursors, points = walk_precursors(cset, dochecks)
+        state = {}
         state['name'] = cset['handle']['name']
         try:
             state['parent'] = cset['handle']['parent']
         except KeyError:
             assert handle == roothandle
             assert cset['handle'].has_key('add')
+        state['rename point'] = [point]
 
     state['points'] = points
-    _handle_name_from_precursors(precursors, state, point)
 
     if dochecks == 0:
         return state
@@ -752,11 +688,10 @@ def _handle_name_at_point(co, handle, point, txn, dochecks=0):
             raise HistoryError, 'file committed with deleted parent'
         if len(name_use_count(co, state, point, txn)) != 1:
             raise HistoryError, 'name already in use'
-        if state['name'] == '.cdv':
+        if state['name'] == 'CVILLE':
             raise HistoryError, 'illegal name'
     except KeyError:
-        if handle != roothandle:
-            raise
+        assert handle == roothandle
 
     return state
 
@@ -807,7 +742,6 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None):
     hcache = {}
     cache = _mini_dag_refcount(co, handle, change, txn, info_cache=hcache)
     hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'rb')
-    #hfile = open(path.join(co.cpath, 'diffs'), 'rb')
 
     points = [change]
     while len(points):
@@ -840,15 +774,8 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None):
             diff = dcache[point]
         else:
             diff = _read_diff(hinfo, hfile)
-        if diff is None:
-            if len(hinfo['precursors']) > 1:
-                raise HistoryError, 'cannot automatically merge changes'
-            # sometimes handle_last_modified isn't optimized
-            assert points == []
-            change = hinfo['precursors'][0][0]
-            continue
-
-        diff = bdecode(zlib.decompress(diff))
+        if diff is not None:
+            diff = bdecode(zlib.decompress(diff))
 
         # put together the precursor list and decrement refcounts
         precursors = []
@@ -870,38 +797,59 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None):
 
 def _handle_contents_at_point(point, hinfo, precursors, diff):
     state = {}
+    points = []
+    for pre in precursors:
+        points = dmerge(points, pre['points'])
+    state['points'] = points
 
     matches = []
-    for pre, index in hinfo['precursors']:
-        matches.append(diff['matches'][index])
+    if diff is not None:
+        for pre, index in hinfo['precursors']:
+            matches.append(diff['matches'][index])
 
-    if diff.has_key('add'):
-        if precursors != []:
-            raise HistoryError, 'handle already exists'
-    elif precursors == []:
-        raise HistoryError, 'cannot modify non-existent file'
+        if diff.has_key('add'):
+            if precursors != []:
+                raise HistoryError, 'handle already exists'
+        elif precursors == []:
+            raise HistoryError, 'cannot modify non-existent file'
 
-    if diff.has_key('delete'):
-        state['delete'] = diff['delete']
+        if diff.has_key('delete'):
+            state['delete'] = diff['delete']
 
     if not state.has_key('delete'):
         fpre = []
         for pre in precursors:
             fpre.append((pre['lines'], pre['line points'], pre['points']))
+        if diff is not None:
+            try:
+                lines, line_points = replay(fpre, matches,
+                                            diff['newlines'], point)
+            except MergeError, msg:
+                raise HistoryError, 'merge error: ' + str(msg)
+            except KeyError:
+                raise HistoryError, 'malformed change'
 
-        try:
-            lines, line_points, points = replay(fpre, matches,
-                                                diff['newlines'], point)
-        except MergeError, msg:
-            raise HistoryError, 'merge error: ' + str(msg)
-        except KeyError:
-            raise HistoryError, 'malformed change'
-
-        points.append(point)
+            points.append(point)
+        else:
+            lines, line_points, points = find_conflict_multiple_safe(fpre)
+            if lines is None:
+                # XXX: this is a pretty gross hack
+                if len(fpre) == 2:
+                    s0 = Set(fpre[0][2])
+                    s1 = Set(fpre[1][2])
+                    if s0 == s1:
+                        raise HistoryError, 'merge error'
+                    elif s0.issubset(s1):
+                        lines, line_points, points = fpre[1]
+                    elif s0.issuperset(s1):
+                        lines, line_points, points = fpre[0]
+                    else:
+                        raise HistoryError, 'merge error'
+                else:
+                    raise HistoryError, 'merge error'
         state['lines'] = lines
         state['line points'] = line_points
 
-    state['points'] = points
     return state
 
 def print_file_with_points(pre):
@@ -923,7 +871,7 @@ from merge import _find_conflict
 def print_conflict(co, fpre):
     p1, p2 = fpre[0], fpre[1]
     olines, oline_points = _find_conflict(fpre[0][0], fpre[0][1], fpre[0][2],
-                                          fpre[1][0], fpre[1][1], fpre[1][2])[:2]
+                                          fpre[1][0], fpre[1][1], fpre[1][2])
 
     ls = []
     offset = [0, 0]
@@ -969,7 +917,9 @@ def rebuild_from_points(co, points, txn):
     co.branchmapdb.truncate(txn)
     co.names.indexdb.truncate(txn)
     co.names.dagdb.truncate(txn)
+    co.names.mergedb.truncate(txn)
     co.contents.indexdb.truncate(txn)
+    co.contents.mergedb.truncate(txn)
     # we don't truncate the cdagdb because it contains the offsets and lengths
     # for the diffs in the files, which we can't recreate. the sync below will
     # read those parameters out and rewrite the cdagdb, anyway.
@@ -1175,7 +1125,7 @@ def db_get(co, cdb, key, txn):
         cache = co.db_cache[db]
     except KeyError:
         cache = co.db_cache[db] = {}
-    if key in cache:
+    if cache.has_key(key):
         return cache[key]
     cache[key] = bdecode(cdb.get(key, txn=txn))
     #try:
@@ -1194,6 +1144,6 @@ def db_put(co, cdb, key, value, txn):
 
 try:
     import psyco
-    psyco.bind(_is_ancestor, 1)
+    psyco.bind(_is_ancestor, 0)
 except ImportError:
     pass

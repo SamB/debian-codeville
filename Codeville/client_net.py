@@ -9,7 +9,7 @@ from client_helpers import _handle_to_filename, set_edit
 from crypt import crypt
 from entropy import random_string, string_to_long, long_to_string
 from history import read_diff, sync_history, is_ancestor
-from history import _write_diff, write_index, write_changeset
+from history import WriteDiff, write_changeset
 from history import dmerge, handles_in_branch, simplify_precursors
 from history import fullpath_at_point, handle_contents_at_point
 from history import tuple_to_server
@@ -260,21 +260,13 @@ class ClientHandler:
         lstate['counts'][rstate['handle']] -= 1
         if lstate['counts'][rstate['handle']] == 0:
             lstate['count'] -= 1
-            try:
-                hfile = open(path.join(self.co.cpath,
-                                       binascii.hexlify(rstate['handle'])),
-                             'r+b')
-            except IOError:
-                hfile = open(path.join(self.co.cpath,
-                                       binascii.hexlify(rstate['handle'])),
-                             'wb')
+
             # XXX: do better ordering
+            WD = WriteDiff(self.co, rstate['handle'], lstate['txn'])
             for change, diff in diffs[rstate['handle']].items():
-                index = _write_diff(self.co, hfile, rstate['handle'], diff,
-                                    lstate['txn'])
-                write_index(self.co, change, rstate['handle'], index,
-                            lstate['txn'])
-            hfile.close()
+                WD.write(diff, change)
+            WD.close()
+
             if lstate['modified'].has_key(rstate['handle']):
                 updates(self.co, self.socket[s][UpdateInfo], lstate,
                         rstate['handle'])
@@ -636,9 +628,10 @@ def update_file(co, handle, pre_heads, rhead, names, dcache, txn):
         h.close()
         file_points, points = gen_file_points(0)
         line_points = find_resolution(file_points, lines)[0]
-        for x in line_points:
-            if x == []:
-                x.append('1')
+        for i in xrange(len(line_points)):
+            if line_points[i] is None:
+                line_points[i] = '1'
+
         olines = find_conflict(lines, line_points, points, rinfo['lines'],
                                rinfo['line points'], rinfo['points'])
     else:
