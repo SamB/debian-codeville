@@ -29,7 +29,7 @@ def upgrade_client(repo_dir):
 
     txn = new_repo.txn_begin()
 
-    UR = upgrade(old_repo, new_repo, txn)
+    UR = upgrade(old_repo, new_repo, old_repo.lcrepo.keys(), txn)
 
     # fix up all the client specific dbs
     for handle, modtime in old_repo.modtimesdb.items():
@@ -56,11 +56,11 @@ def upgrade_client(repo_dir):
     for key, value in old_repo.varsdb.items():
         new_repo.varsdb.put(key, value, txn=txn)
 
-    _rebuild_fndb(new_repo, txn)
-
     heads = bdecode(old_repo.linforepo.get('heads'))
     new_heads = [UR.point_map[point] for point in heads]
     new_repo.linforepo.put('heads', bencode(new_heads), txn=txn)
+
+    _rebuild_fndb(new_repo, txn)
 
     for key, value in old_repo.linforepo.items():
         if not key.startswith('cdv://'):
@@ -93,7 +93,7 @@ def upgrade_server(repo_dir):
 
     txn = new_repo.txn_begin()
 
-    UR = upgrade(old_repo, new_repo, txn)
+    UR = upgrade(old_repo, new_repo, old_repo.repolistdb.values(), txn)
 
     # write the new repository heads
     for repo, head in old_repo.repolistdb.items():

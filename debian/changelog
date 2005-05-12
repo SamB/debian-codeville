@@ -1,3 +1,15 @@
+codeville (0.1.12-0) experimental; urgency=low
+
+  * New upstream version.
+  * debian/control: Changed Maintainer to Michael Janssen
+    <jamuraa@debian.org>.  Added "Uploaders" field.
+  * debian/NEWS: Added "Changelog" style comments from http://codeville.org/
+    regarding this version.
+  * debian/control: linda didn't like the short description being repeated in
+    the long description.
+
+ -- Chad Walstrom <chewie@debian.org>  Thu, 12 May 2005 10:57:51 -0500
+
 codeville (0.1.11-0) experimental; urgency=low
 
   * New upstream.

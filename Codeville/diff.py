@@ -54,9 +54,9 @@ def standard_diff(lines1, lines2):
 
 def unified_diff(lines1, lines2):
     matches = find_matches(lines1, lines2)
-    if len(matches) == 0 or matches[0][0] != 0 or matches[0][1] != 0:
-        matches.insert(0, (0, 0, 0))
-    if matches[-1][0]+matches[-1][2] != len(lines1) or matches[-1][1]+matches[-1][2] != len(lines2):
+    if     len(matches) == 0 or \
+           matches[-1][0]+matches[-1][2] != len(lines1) or \
+           matches[-1][1]+matches[-1][2] != len(lines2):
         matches.append((len(lines1), len(lines2), 0))
 
     text = []
@@ -65,7 +65,7 @@ def unified_diff(lines1, lines2):
         length = min(matches[0][2], 3)
         m = 1
     else:
-        line = line2 = 0
+        line, line2 = -1, 0
         length = 0
         m = 0
     while m < len(matches):
@@ -73,14 +73,15 @@ def unified_diff(lines1, lines2):
         m_end = m
         while True:
             line_end, line2_end, length_end = matches[m_end]
-            if length_end > 6 or m + 1 == len(matches):
+            if length_end > 6 or m_end + 1 == len(matches):
                 break
             m_end += 1
         length_end = min(length_end, 3)
 
         # print the diff header for all the hunks we can cover
+        lfudge = max(0, line)
         header = "@@ -%d,%d +%d,%d @@\n" % \
-                 (line + 1,  line_end - line + length_end,
+                 (lfudge + 1,  line_end - lfudge + length_end,
                   line2 + 1, line2_end - line2 + length_end)
         text.append(header)
 
@@ -102,7 +103,7 @@ def unified_diff(lines1, lines2):
         len_full = length
         length = min(3, length)
         # print the trailing context
-        for i in xrange(line + 1, line + length + 1):
+        for i in xrange(line, line + length):
             text.append(' ' + lines1[i] + "\n")
 
         # setup stuff for the next iteration

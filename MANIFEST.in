@@ -1,0 +1,5 @@
+recursive-include Codeville *.py *.pyd
+include cdv cdvserver cdvpasswd cdv-agent cdvupgrade LICENSE.txt
+include cdvserver.conf.sample
+include src/winrand.c
+include MANIFEST.in
