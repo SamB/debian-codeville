@@ -1,12 +1,36 @@
+codeville (0.1.13-1) unstable; urgency=low
+
+  * New upstream version.
+  * Removed debian/patched/pathfix.patch (included in upstream)
+
+ -- Michael Janssen <jamuraa@debian.org>  Wed, 20 Jul 2005 00:37:32 -0500
+
+codeville (0.1.12-2) unstable; urgency=low
+
+  * debian/patches/pathfix.patch: Patch submitted to codeville developer's
+    email list by Sudhi Herle <sudhi@herle.net>.  Fixes cdv's dependence on
+    PYTHONPATH to find required modules.
+  * debian/patches/mergelcs-shebang.patch: Remove shebang in
+    Codeville/mergelcs.py
+
+ -- Chad Walstrom <chewie@debian.org>  Thu, 14 Jul 2005 10:01:01 -0500
+
+codeville (0.1.12-1) experimental; urgency=low
+
+  * debian/README.Debian: Removed section about non-free.
+  * debian/*.html: Updated documentation to recent upstream web docs. 
+
+ -- Chad Walstrom <chewie@debian.org>  Tue, 24 May 2005 17:17:15 -0500
+
 codeville (0.1.12-0) experimental; urgency=low
 
   * New upstream version.
   * debian/control: Changed Maintainer to Michael Janssen
     <jamuraa@debian.org>.  Added "Uploaders" field.
-  * debian/NEWS: Added "Changelog" style comments from http://codeville.org/
-    regarding this version.
-  * debian/control: linda didn't like the short description being repeated in
-    the long description.
+  * debian/NEWS: Added "Changelog" style comments from
+    http://codeville.org/ regarding this version.
+  * debian/control: linda didn't like the short description being
+    repeated in the long description.
 
  -- Chad Walstrom <chewie@debian.org>  Thu, 12 May 2005 10:57:51 -0500
 

@@ -36,16 +36,17 @@ Flushed = 4
 class ServerError(Exception): pass
 
 class ServerRepository:
-    def _db_init(self, local, metadata_dir='.cdv', rw=True):
+    def _db_init(self, local, metadata_dir='.cdv', rw=True, init=False):
         self.conf_path = path.join(local, metadata_dir)
-        if not path.exists(self.conf_path):
+        flags = 0
+        if init:
             os.makedirs(self.conf_path)
+            flags = db.DB_CREATE
 
         self.txns = {}
 
         cwd        = os.getcwd()
         self.dbenv = None
-        flags      = db.DB_CREATE
         ltxn       = None
         if rw == True:
             self.dbenv = db.DBEnv()
@@ -88,7 +89,7 @@ class ServerRepository:
         self.cpath = path.join(self.conf_path, 'contents')
 
         # populate the repository
-        if rw == True and not self.linforepo.has_key('branchmax'):
+        if init:
             root = bencode({'precursors': [], 'handles': {roothandle: {'add': {'type': 'dir'}, 'name': ''}}})
             self.lcrepo.put(rootnode, root, txn=ltxn)
             self.linforepo.put('branchmax', bencode(0), txn=ltxn)
@@ -165,9 +166,9 @@ class ServerHandler(ServerRepository):
         pw_file = path.join(config.get('control', 'datadir'), 'passwd')
         self.passwd = Passwd(pw_file)
 
-    def db_init(self):
+    def db_init(self, init=False):
         local = self.config.get('control', 'datadir')
-        self._db_init(local)
+        self._db_init(local, init=init)
 
         self.file_locks = {}
         return
@@ -604,12 +605,8 @@ class ServerHandler(ServerRepository):
             new_head = request['head']
 
         self.repolistdb.put(request['repository'], new_head, txn=txn)
-        named = sync_history(self, new_head, txn, cache=request['changes'])[0]
+        sync_history(self, new_head, txn, cache=request['changes'])
         del request['changes']
-
-        # verify the changesets
-        for handle in named:
-            handle_name_at_point(self, handle, new_head, txn, dochecks=1)
 
         # validate all the files for which we already have the diffs
         locks = []

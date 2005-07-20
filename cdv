@@ -3,13 +3,26 @@
 # Written by Ross Cohen
 # See LICENSE.txt for license information.
 
+# Setup import path in case we can't find codeville in standard places
+
+try:
+    import Codeville.db
+except ImportError:
+    import sys, os.path
+    from os.path import dirname, abspath, join
+    pypath = "lib/python%d.%d/site-packages" % \
+                (sys.version_info[0], sys.version_info[1])
+    base   = dirname(dirname(abspath(sys.argv[0])))
+    sys.path[0:0] = [ join(base, pypath) ]  # first place to look
+
 import binascii
+import Codeville
 from Codeville.db import db
 from Codeville.db import VersionMismatchException
 from Codeville.db import check_format_version, check_rebuild_version
 from Codeville.client import cli_init, PathError
 from Codeville.client import add, delete, rename, revert, edit
-from Codeville.client import history, status, diff, describe
+from Codeville.client import history, status, diff, describe, annotate
 from Codeville.client import update, commit, set_password, rebuild
 from Codeville.client import create_repo, remove_repo, list_repos
 from Codeville.client import find_co, server_to_tuple, Checkout
@@ -17,12 +30,13 @@ from Codeville.client import cli_is_ancestor, cli_print_dag, cli_print_big_dag
 from Codeville.client import cli_construct, cli_heads, cli_last_modified
 from Codeville.history import long_id, short_id
 from Codeville.history import ChangeNotKnown, ChangeNotUnique, ChangeBadRepository
-from getopt import getopt, GetoptError
+from getopt import gnu_getopt, GetoptError
 import os
 from os import path
 from random import seed
+import signal
 from sys import argv, exit
-from time import time
+from time import time, strptime, mktime
 from traceback import print_exc
 
 def run_init(co, opts, args):
@@ -54,7 +68,7 @@ def run_history(co, opts, args):
         if   opt == '-h':
             head = long_id(co, arg)
 
-        elif opt == '-n':
+        elif opt == '-c':
             try:
                 limit = int(arg)
             except ValueError:
@@ -128,10 +142,12 @@ def run_update(co, opts, args):
     return update(co, remote, merge=merge)
 
 def run_commit(co, opts, args):
-    backup, comment, noserver = False, None, 0
+    backup, tstamp, comment, noserver = False, None, None, 0
     for (opt, arg) in opts:
         if opt == '-b':
             backup = True
+        elif opt == '-D':
+            tstamp = mktime(strptime(arg, '%Y/%m/%d %H:%M:%S %Z'))
         elif opt == '-m':
             comment = arg
         elif opt == '-n':
@@ -144,7 +160,7 @@ def run_commit(co, opts, args):
         if remote is None or remote[2] is None:
             print 'error - Invalid server: ' + co.repo
             return 1
-    return commit(co, remote, comment, backup=backup, files=args)
+    return commit(co, remote, comment, tstamp=tstamp, backup=backup, files=args)
 
 def run_construct(co, opts, args):
     return cli_construct(co, args[0])
@@ -229,33 +245,65 @@ def run_describe(co, opts, args):
 def run_password(co, opts, args):
     return set_password(co)
 
-# the format is (function, optargs, min args, max args)
-commands = {'init':       (run_init,      '',     0, 0),
-            'add':        (run_add,       '',     1, None),
-            'rename':     (run_rename,    '',     2, 2),
-            'remove':     (run_remove,    '',     1, None),
-            'revert':     (run_revert,    'a',    1, None),
-            'edit':       (run_edit,      '',     1, None),
-            'diff':       (run_diff,      'r:N',  0, None),
-            'describe':   (run_describe,  'dsx',  1, None),
-            'history':    (run_history,   'h:n:s:v', 0, None),
-            'status':     (run_status,    'v',    0, None),
-            'heads':      (run_heads,     '',     0, 0),
-            'last-modified': (run_last_mod, 'h:', 1, 1),
-            'update':     (run_update,    'd',    0, 0),
-            'commit':     (run_commit,    'bm:n', 0, None),
-            'construct':  (run_construct, '',     1, 1),
-            'rebuild':    (run_rebuild,   'h:',   0, 0),
-            'is_ancestor': (run_is_ancestor, '',  2, 2),
-            'print_dag':  (run_print_dag, 'h:',   1, 1),
-            'print_history': (run_print_history, '', 0, None),
-            'create':     (run_create,    '',     1, 1),
-            'destroy':    (run_destroy,   '',     1, 1),
-            'list-repos': (run_list,      '',     0, 0),
-            'set':        (run_set,       '',     2, 2),
-            'unset':      (run_unset,     '',     1, 1),
-            'show-vars':  (run_show_vars, '',     0, 0),
-            'password':   (run_password,  '',     0, 0)}
+def run_annotate(co, opts, args):
+    rev = 'local'
+    for (opt, arg) in opts:
+        if opt == '-r':
+            rev = arg
+
+    return annotate(co, rev, args)
+
+options = {
+    "unmodified": ('a', 0,  "Only files which were not modified"),
+    "backup":     ('b', 0,  "Backup existing changesets, don't create a new one"),
+    "count":      ('c', 1, "<count> elements to display"),
+    "date":       ('D', 1, "<YYYY/MM/DD HH:MM:SS TZ> indicating changeset creation time"),
+    "diff":       ('d', 0,  "Display a diff"),
+    "dont-merge": ('d', 0,  "Don't merge changes into the workspace"),
+    "head":       ('h', 1, "Use <head> as the head"),
+    "message":    ('m', 1, "Use <message> as the commit message"),
+    "no-network": ('n', 0,  "Don't perform any network activity"),
+    "new-files":  ('N', 0,  "Show diffs for new and deleted files"),
+    "path":       ('p', 1, "<path> to client"),
+    "revision":   ('r', 1, "<URL> or <changeset>"),
+    "repository": ('R', 1, "<repository> for this operation"),
+    "skip":       ('s', 1, "<skip> number of elements"),
+    "user":       ('u', 1, "<user> as whom to perform this operation"),
+    "verbose":    ('v', 0,  ""),
+    "version":    ('V', 0,  "Print version information"),
+    "xml":        ('x', 0,  "Output XML")
+    }
+
+# the format is (function, min args, max args, long opts)
+commands = {
+    'init':       (run_init,      0, 0,     []),
+    'add':        (run_add,       1, None,  []),
+    'rename':     (run_rename,    2, 2,     []),
+    'remove':     (run_remove,    1, None,  []),
+    'revert':     (run_revert,    1, None,  ["unmodified"]),
+    'edit':       (run_edit,      1, None,  []),
+    'annotate':   (run_annotate,  0, None,  ["revision"]), 
+    'diff':       (run_diff,      0, None,  ["revision", "new-files"]),
+    'describe':   (run_describe,  1, None,  ["diff", "xml"]),
+    'history':    (run_history,   0, None,  ["head", "count", "skip", "verbose"]),
+    'status':     (run_status,    0, None,  ["verbose"]),
+    'heads':      (run_heads,     0, 0,     []),
+    'last-modified': (run_last_mod, 1, 1,   ["head"]),
+    'update':     (run_update,    0, 0,     ["dont-merge"]),
+    'commit':     (run_commit,    0, None,  ["backup", "date", "message", "no-network"]),
+    'construct':  (run_construct, 1, 1,     []),
+    'rebuild':    (run_rebuild,   0, 0,     ["head"]),
+    'is_ancestor': (run_is_ancestor, 2, 2,  []),
+    'print_dag':  (run_print_dag, 1, 1,     ["head"]),
+    'print_history': (run_print_history, 0, None, []),
+    'create':     (run_create,    1, 1,     []),
+    'destroy':    (run_destroy,   1, 1,     []),
+    'list-repos': (run_list,      0, 0,     []),
+    'set':        (run_set,       2, 2,     []),
+    'unset':      (run_unset,     1, 1,     []),
+    'show-vars':  (run_show_vars, 0, 0,     []),
+    'password':   (run_password,  0, 0,     [])
+    }
 
 def run_help():
     print 'Valid commands are:\n\t',
@@ -263,37 +311,113 @@ def run_help():
     coms.sort()
     print '\n\t'.join(coms)
 
+def opt_help(opts):
+    for lopt in opts:
+        sopt = options[lopt][0]
+        desc = options[lopt][2]
+        print "  -%s, --%s\t%s" % (sopt, lopt, desc)
+    return
+
+def subcommand_help(cmd):
+    print "Global options:"
+    opt_help(["path", "repository", "user", "version"])
+    if cmd is None:
+        return
+
+    print "\nOptions for '%s':" % (cmd,)
+    opt_help(commands[cmd][3])
+    return
+
+def aggregate_opts(commands):
+    fopts, lfopts = [], []
+    for key, value in options.items():
+        if value[1] == 1:
+            fopts.append(value[0] + ':')
+            lfopts.append(key + '=')
+        else:
+            fopts.append(value[0])
+            lfopts.append(key)
+
+    return ''.join(fopts), lfopts
+
+def convert_to_short_opts(optlist):
+    new_optlist = []
+    for opt, arg in optlist:
+        if options.has_key(opt[2:]):
+            opt = '-' + options[opt[2:]][0]
+        new_optlist.append((opt, arg))
+    return new_optlist
+
+def check_subcommand_opts(cmd, opts):
+    known_opts = []
+    command = commands[cmd]
+    for lo in command[3]:
+        known_opts.append('--' + lo)
+        if options.has_key(lo):
+            known_opts.append('-' + options[lo][0])
+
+    for opt, arg in opts:
+        if opt not in known_opts:
+            raise GetoptError, "option %s not recognized" % (opt,)
+    return
+
 def run(args):
     seed(time() + os.getpid())
     local, ulocal, repo, user = None, None, None, None
     retval = 1
+
+    # get rid of nuisance traceback
+    if os.name != 'nt':
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+    all_opts, all_lopts = aggregate_opts(commands)
     try:
-        optlist, args = getopt(args, 'p:r:u:')
-    except GetoptError:
-        print "Valid options are:\n\t-p <path> to checkout\n\t-r <URL> for the repository for this operation\n\t-u <user>"
+        optlist, args = gnu_getopt(args, all_opts, all_lopts)
+    except GetoptError, msg:
+        print "error - %s\n" % (msg.args[0],)
+
+        # maybe we can find something that looks like a subcommand
+        cmd = None
+        for arg in args:
+            if arg not in commands:
+                continue
+            cmd = arg
+            break
+
+        subcommand_help(cmd)
         return 1
+
+    # parse the top level options
+    optlist = convert_to_short_opts(optlist)
+    optlist_unhandled = []
     for (opt, arg) in optlist:
-        if opt == '-p':
+        if   opt == '-p':
             ulocal = os.path.abspath(arg)
-        elif opt == '-r':
+        elif opt == '-R':
             repo = arg
         elif opt == '-u':
             user = arg
-    if args == []:
+        elif opt == '-V':
+            print "cdv, version %s" % (Codeville.version,)
+            return 0
+        else:
+            optlist_unhandled.append((opt, arg))
+    optlist = optlist_unhandled
+
+    # pull the subcommand
+    try:
+        cname = args.pop(0)
+        command = commands[cname]
+    except (IndexError, KeyError):
         run_help()
         return 1
 
-    # parse the command line options
+    # check the options passed in against the subcommand
     try:
-        command = commands[args[0]]
-        cname = args[0]
-    except KeyError:
-        run_help()
-        return 1
-    try:
-        optlist, args = getopt(args[1:], command[1])
+        check_subcommand_opts(cname, optlist)
     except GetoptError, msg:
-        print 'error - ' + str(msg)
+        print 'error - %s\n' % (msg.args[0],)
+        subcommand_help(cname)
         return 1
 
     # check the proper number of arguments were passed

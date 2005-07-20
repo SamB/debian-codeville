@@ -4,6 +4,7 @@
 from bencode import bdecode, bencode
 import binascii
 from db import db
+from DFS import DFS
 from merge import MergeError, replay
 from os import path
 from sha import sha
@@ -76,7 +77,7 @@ def _name_use_count(co, state, point, func, txn):
     return named
 
 def name_use_count(co, state, point, txn):
-    return _name_use_count(co, state, point, __handle_name_at_point, txn)
+    return _name_use_count(co, state, point, handle_name_at_point, txn)
 
 def _children_count(co, handle, point, func, txn):
     cursor = co.allnamesdb.cursor(txn=txn)
@@ -99,7 +100,7 @@ def _children_count(co, handle, point, func, txn):
     return children.keys()
 
 def children_count(co, handle, point, txn):
-    return _children_count(co, handle, point, __handle_name_at_point, txn)
+    return _children_count(co, handle, point, handle_name_at_point, txn)
 
 def parent_loop_check(co, handle, point, txn):
     hseen = {}
@@ -107,10 +108,10 @@ def parent_loop_check(co, handle, point, txn):
         if hseen.has_key(handle):
             return handle
         hseen[handle] = 1
-        change = handle_last_modified(co, co.names, handle, point, txn)
-        if change is None:
+        phandle = handle_name_at_point(co, handle, point, txn)['parent']
+        if phandle is None:
             return handle
-        handle = _handle_name_at_point(co, handle, change, txn)['parent']
+        handle = phandle
     return None
 
 def is_ancestor(co, ancestor, point, txn):
@@ -238,43 +239,40 @@ class WriteDiff:
 def write_changeset(co, point, cset, txn):
     co.lcrepo.put(point, cset, txn=txn)
 
-def verify_history(co, point, named, modified, txn):
-    for handle in named:
-        handle_name_at_point(co, handle, point, txn, dochecks=1)
-
 def sync_history(co, point, txn, cache=dict()):
-    named, modified = [], []
+    named, modified, manifest = [], [], {}
 
-    points = [point]
-    while len(points):
-        npoint = points[-1]
+    sync_dfs = DFS(_history_deps, [co, txn, cache])
+    sync_dfs.search(point)
+    points = sync_dfs.result()
 
-        if cache.has_key(npoint):
-            pinfo = cache[npoint]
-        else:
-            pinfo = bdecode(co.lcrepo.get(npoint, txn=txn))
-            cache[npoint] = pinfo
-
-        pres = []
-        for pre in pinfo['precursors']:
-            if co.changesdb.has_key(binascii.hexlify(pre), txn):
-                continue
-            pres.append(pre)
-        pres.reverse()
-
-        points.extend(pres)
-        if pres != []:
-            continue
-
-        npoint = points.pop()
-
-        if co.changesdb.has_key(binascii.hexlify(npoint), txn):
-            continue
-
+    for npoint in points:
         named, modified = _sync_history(co, npoint, txn, cache=cache)
+        for handle in named:
+            _verify_manifest(co, handle, npoint, txn)
         co.changesdb.put(binascii.hexlify(npoint), '', txn=txn)
 
     return named, modified
+
+def _history_deps(node, args):
+    co, txn, cache = args[0], args[1], args[2]
+
+    # decode the changeset and populate the cache
+    cset = bdecode(co.lcrepo.get(node, txn=txn))
+    cache[node] = cset
+
+    # reversing the nodes gives better overall performance
+    nodes = []
+
+    for i in xrange(len(cset['precursors'])-1, -1, -1):
+        pre_node = cset['precursors'][i]
+
+        # don't sync it if we handled it in a previous import
+        if co.changesdb.has_key(binascii.hexlify(pre_node), txn):
+            continue
+        nodes.append(pre_node)
+
+    return nodes
 
 def _sync_history(co, point, txn, cache=dict()):
     pinfo = cache[point]
@@ -344,6 +342,49 @@ def _sync_history(co, point, txn, cache=dict()):
                      modified, pinfo, txn)
 
     return (named, modified)
+
+def _verify_manifest(co, handle, point, txn):
+    state = _handle_name_at_point(co, handle, point, txn)
+    co.name_cache = {}
+
+    if state['name'] == '' and handle != roothandle:
+        raise HistoryError, 'illegal name'
+    if state['name'] == '.' or state['name'] == '..':
+        raise HistoryError, 'illegal name'
+    if state['name'] == '.cdv':
+        raise HistoryError, 'illegal name'
+
+    if state.has_key('delete'):
+        if len(children_count(co, handle, point, txn)):
+            raise HistoryError, 'non-empty directory can\'t be deleted'
+        return state
+
+    staticinfo = db_get(co, co.staticdb, handle, txn)
+    if staticinfo['type'] == 'dir':
+        try:
+            if parent_loop_check(co, state['parent'], point, txn):
+                raise HistoryError, 'parent loop'
+        except KeyError:
+            pass
+
+    try:
+        #parentinfo = bdecode(co.staticdb.get(state['parent'], txn=txn))
+        parentinfo = db_get(co, co.staticdb, state['parent'], txn)
+        if parentinfo['type'] != 'dir':
+            raise HistoryError, 'parent not a directory'
+
+        parentstate = handle_name_at_point(co, state['parent'], point, txn)
+        if parentstate is None:
+            raise HistoryError, 'parent not in repository'
+        if parentstate.has_key('delete'):
+            raise HistoryError, 'file committed with deleted parent'
+        if len(name_use_count(co, state, point, txn)) != 1:
+            raise HistoryError, 'name already in use'
+    except KeyError:
+        if handle != roothandle:
+            raise
+
+    return
 
 def validate_handle(handle, precursors, hinfo):
     encinfo = bencode({'precursors': precursors, 'handle': hinfo})
@@ -427,7 +468,7 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
 
         mdinfo = {'handle': {}}
         if cset['handles'].has_key(handle):
-            mdinfo['handle'] = helper(co, handle, point,
+            mdinfo['handle'] = helper(co, handle, point, precursors,
                                       cset['handles'][handle], txn)
         if mdinfo['handle'] == {}:
             del mdinfo['handle']
@@ -448,7 +489,7 @@ def simplify_precursors(co, handle, changedbs, pres, txn):
     dagdb = changedbs.dagdb
     precursors, indices = [], []
     for i in xrange(len(pres)):
-        last = handle_last_modified(co, changedbs, handle, pres[i], txn, opt=True)
+        last = handle_last_modified(co, changedbs, handle, pres[i], txn)
         if last is None:
             continue
 
@@ -467,7 +508,7 @@ def simplify_precursors(co, handle, changedbs, pres, txn):
 
     return retval, len(pres)
 
-def _update_helper_content(co, handle, point, hinfo, txn):
+def _update_helper_content(co, handle, point, precursors, hinfo, txn):
     oinfo = {}
     if hinfo.has_key('hash'):
         if co.contents.dagdb.has_key(handle + point, txn):
@@ -483,7 +524,7 @@ def _update_helper_content(co, handle, point, hinfo, txn):
         oinfo['delete'] = 1
     return oinfo
  
-def _update_helper_name(co, handle, point, hinfo, txn):
+def _update_helper_name(co, handle, point, precursors, hinfo, txn):
     oinfo = {}
     if hinfo.has_key('name'):
         oinfo['name'] = hinfo['name']
@@ -500,7 +541,19 @@ def _update_helper_name(co, handle, point, hinfo, txn):
     if hinfo.has_key('add'):
         oinfo['add'] = 1
     elif hinfo.has_key('delete'):
+        phinfo = bdecode(co.names.dagdb.get(handle + precursors[0][0], txn=txn))
+        oinfo = phinfo['handle']
         oinfo['delete'] = 1
+    else:
+        # something to make name lookups faster
+        deleted = False
+        for pre in precursors:
+            phinfo = bdecode(co.names.dagdb.get(handle + pre[0], txn=txn))
+            if phinfo.has_key('delete'):
+                oinfo = phinfo['handle']
+                break
+    if oinfo != {}:
+        assert oinfo.has_key('name') or oinfo.has_key('delete')
     return oinfo
 
 def changes_in_branch(co, lpoints, bpoints, txn, cache=None):
@@ -563,20 +616,26 @@ def handles_in_branch(co, lpoints, bpoints, txn, cache=None, deleted_modified=Fa
             del modified[handle]
     return (named.keys(), modified.keys())
 
-def handle_last_modified(co, changedbs, handle, change, txn, opt=False):
+def handle_last_modified(co, changedbs, handle, change, txn):
+    retval = _handle_last_modified(co, changedbs, handle, change, txn)
+    if retval is None:
+        return retval
+
+    # optimization step. we may have gotten an artifact of the indexing
+    # structure. because of how the mini-dags are constructed, this can be
+    # corrected by following a single precursor.
+    pinfo = bdecode(changedbs.dagdb.get(handle + retval, txn=txn))
+    if not pinfo.has_key('handle') and len(pinfo['precursors']) == 1:
+        retval = _handle_last_modified(co, changedbs, handle,
+                                       pinfo['precursors'][0][0], txn)
+
+    return retval
+
+def _handle_last_modified(co, changedbs, handle, change, txn):
     indexdb = changedbs.indexdb
     dagdb   = changedbs.dagdb
 
-    def _optimize(retval):
-        pinfo = bdecode(dagdb.get(handle + retval, txn=txn))
-        if not pinfo.has_key('handle') and len(pinfo['precursors']) == 1:
-            retval = handle_last_modified(co, changedbs, handle,
-                                          pinfo['precursors'][0][0], txn)
-        return retval
-
     if dagdb.has_key(handle + change, txn):
-        if opt == True:
-            return _optimize(change)
         return change
 
     #hinfo = bdecode(co.branchmapdb.get(change, txn=txn))
@@ -618,12 +677,6 @@ def handle_last_modified(co, changedbs, handle, change, txn, opt=False):
             break
     cursor.close()
 
-    # optimization step. we may have gotten an artifact of the indexing
-    # structure. because of how the mini-dags are constructed, this can be
-    # corrected by following a single precursor.
-    if retval is not None and opt == True:
-        return _optimize(retval)
-
     return retval
 
 def _print_indexdb(co, indexdb, handle, txn):
@@ -639,22 +692,24 @@ def _print_indexdb(co, indexdb, handle, txn):
         foo = cursor.next()
     cursor.close()
 
-def handle_name_at_point(co, handle, point, txn, dochecks=0):
+def handle_name_at_point(co, handle, point, txn, lookup=True):
+    change = point
+    if lookup:
+        change = handle_last_modified(co, co.names, handle, point, txn)
+        if change is None:
+            return None
+    return bdecode(co.names.dagdb.get(handle + change, txn=txn))['handle']
+
+def __handle_name_at_point(co, handle, point, txn, docache=True):
+    #key = handle + point
+    #if co.name_cache.has_key(key):
+    #    return co.name_cache[key]
+
     change = handle_last_modified(co, co.names, handle, point, txn)
     if change is None:
         return None
-    co.name_cache = {}
-    return _handle_name_at_point(co, handle, change, txn, dochecks=dochecks)
 
-def __handle_name_at_point(co, handle, point, txn, dochecks=0):
-    key = handle + point
-    if not dochecks and co.name_cache.has_key(key):
-        return co.name_cache[key]
-
-    change = handle_last_modified(co, co.names, handle, point, txn)
-    if change is None:
-        return None
-    return _handle_name_at_point(co, handle, change, txn, dochecks=dochecks)
+    return _handle_name_at_point(co, handle, change, txn, docache=docache)
 
 def _handle_name_from_precursors(precursors, resolution, point):
     if resolution.has_key('delete'):
@@ -687,12 +742,12 @@ def _handle_name_from_precursors(precursors, resolution, point):
 
     return
 
-def _handle_name_at_point(co, handle, point, txn, dochecks=0):
+def _handle_name_at_point(co, handle, point, txn, docache=False):
     cset = bdecode(co.names.dagdb.get(handle + point, txn=txn))
 
     precursors, points = [], [point]
     for pre, index in cset['precursors']:
-        pre_name = _handle_name_at_point(co, handle, pre, txn, dochecks=dochecks)
+        pre_name = _handle_name_at_point(co, handle, pre, txn, docache=docache)
         if pre_name is None:
             continue
         points = dmerge(points, pre_name['points'])
@@ -716,47 +771,10 @@ def _handle_name_at_point(co, handle, point, txn, dochecks=0):
     state['points'] = points
     _handle_name_from_precursors(precursors, state, point)
 
-    if dochecks == 0:
+    if not docache:
         return state
 
     co.name_cache[handle + point] = state
-
-    if state['name'] == '' and handle != roothandle:
-        raise HistoryError, 'illegal name'
-    if state['name'] == '.' or state['name'] == '..':
-        raise HistoryError, 'illegal name'
-
-    if state.has_key('delete'):
-        if len(children_count(co, handle, point, txn)):
-            raise HistoryError, 'non-empty directory can\'t be deleted'
-        return state
-
-    staticinfo = db_get(co, co.staticdb, handle, txn)
-    if staticinfo['type'] == 'dir':
-        try:
-            if parent_loop_check(co, state['parent'], point, txn):
-                raise HistoryError, 'parent loop'
-        except KeyError:
-            pass
-
-    try:
-        #parentinfo = bdecode(co.staticdb.get(state['parent'], txn=txn))
-        parentinfo = db_get(co, co.staticdb, state['parent'], txn)
-        if parentinfo['type'] != 'dir':
-            raise HistoryError, 'parent not a directory'
-
-        parentstate = __handle_name_at_point(co, state['parent'], point, txn)
-        if parentstate is None:
-            raise HistoryError, 'parent not in repository'
-        if parentstate.has_key('delete'):
-            raise HistoryError, 'file committed with deleted parent'
-        if len(name_use_count(co, state, point, txn)) != 1:
-            raise HistoryError, 'name already in use'
-        if state['name'] == '.cdv':
-            raise HistoryError, 'illegal name'
-    except KeyError:
-        if handle != roothandle:
-            raise
 
     return state
 
@@ -792,7 +810,7 @@ def _mini_dag_refcount(co, handle, point, txn, cache=None, info_cache=None):
             points.append(p)
     return cache
 
-def handle_contents_at_point(co, handle, point, txn, dcache=None):
+def handle_contents_at_point(co, handle, point, txn, dcache=None, replayfunc=replay):
     if dcache is None:
         dcache = {}
     #staticinfo = bdecode(co.staticdb.get(handle, txn=txn))
@@ -861,14 +879,15 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None):
 
         # finally, get the contents
         cache[point]['info'] = _handle_contents_at_point(point, hinfo,
-                                                         precursors, diff)
+                                                         precursors, diff,
+                                                         replayfunc=replayfunc)
 
     hfile.close()
 
     cache[change]['info']['type'] = staticinfo['type']
     return cache[change]['info']
 
-def _handle_contents_at_point(point, hinfo, precursors, diff):
+def _handle_contents_at_point(point, hinfo, precursors, diff, replayfunc=replay):
     state = {}
 
     matches = []
@@ -890,8 +909,8 @@ def _handle_contents_at_point(point, hinfo, precursors, diff):
             fpre.append((pre['lines'], pre['line points'], pre['points']))
 
         try:
-            lines, line_points, points = replay(fpre, matches,
-                                                diff['newlines'], point)
+            lines, line_points, points = replayfunc(fpre, matches,
+                                                    diff['newlines'], point)
         except MergeError, msg:
             raise HistoryError, 'merge error: ' + str(msg)
         except KeyError:
@@ -1195,5 +1214,6 @@ def db_put(co, cdb, key, value, txn):
 try:
     import psyco
     psyco.bind(_is_ancestor, 1)
+    psyco.bind(handle_last_modified, 1)
 except ImportError:
     pass

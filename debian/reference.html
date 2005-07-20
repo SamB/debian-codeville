@@ -10,8 +10,8 @@
 <div class="navContainer">
 <ul class="nav">
 	<li id="first"><a href="/">Home</a></li>
-	<li><a href="/#download">Download</a></li>
-	<li><a href="/#news">News</a></li>
+	<li><a href="/download.php">Download</a></li>
+	<li><a href="/news.php">News</a></li>
 	<li><a href="/docs/">Docs</a></li>
 	<li id="last"><a href="/docs/todo.php">Todo</a></li>
 </ul>
@@ -87,6 +87,10 @@
 <div class="optdesc">skips the first &lt;skip count&gt; changes.</div>
 <div class="opt">-v</div>
 <div class="optdesc">causes it to print the changes verbosely which includes additional information about each changeset which affected the files.</div>
+
+<hr>
+<pre>init</pre>
+<p class="command">Initialize a new client with the current directory as the root. Specify a directory other than current one by using the top level -p switch.</p>
 
 <hr>
 <pre>is_ancestor &lt;changeset1&gt; &lt;changeset2&gt;</pre>
@@ -175,7 +179,7 @@
 <p class="command">Gets all changes made to the repository since the last time you did an update.  Files will be merged as necessary.  In the event of unresolved conflicts, the user will be asked to resolve them.</p>
 
 <div class="opt">-d</div>
-<div class="optdesc">is broken in 0.1.9 and should not be used in this version.  In general, it pulls in changesets but does not merge them.  This allows a user to browse them and diff against them.  It will be functional in the next version.</div>
+<div class="optdesc">Pull in changesets but do not merge them.  Has no effect on the workspace state.  This allows a user to browse and diff changesets without having to merge.</div>
 
 <h1>Specifying files:</h1>
 
@@ -196,8 +200,8 @@
 <div class="navContainer">
 <ul class="nav">
 	<li id="first"><a href="/">Home</a></li>
-	<li><a href="/#download">Download</a></li>
-	<li><a href="/#news">News</a></li>
+	<li><a href="/download.php">Download</a></li>
+	<li><a href="/news.php">News</a></li>
 	<li><a href="/docs/">Docs</a></li>
 	<li id="last"><a href="/docs/todo.php">Todo</a></li>
 </ul>

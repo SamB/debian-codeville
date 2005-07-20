@@ -21,30 +21,5 @@ This package currently does not provide an init.d mechanism for which to start
 the Codeville server.  Please read the documentation in
 /usr/share/doc/codeville regarding the server script and its configuration.
 
-Why non-free?
-=============
-According to information filed with bug report #280209, [#]_ the license
-license Bram and Ross choose to distribute this code under, Open Software
-License version 2.0, appears to have conflict with the DFSG.  debian-legal has
-a thread regarding this conflict:
-
-   http://lists.debian.org/debian-legal/2004/05/msg00118.html
-
-A very long discussion continues regarding Open Software License version 2.1
-here:
-
-   http://lists.debian.org/debian-legal/2004/09/msg00179.html
-
-The current position, as of Mon, 02 May 2005 12:14:42 -0500, is that no
-versions of OSL comply with DFSG.
-
-.. note:: I find this terribly ironic because the author of Debian Free
-   Software Guidelines (DFSG_) is also the author of Open Source Definition
-   (OSD_), the conditions for which OSL was intended to satisfy.  Then again, I
-   am not a debian-legal-lawyer. -- Chad Walstrom, 2005-05-02
-
------
-
-.. [#]: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=280209
-.. _DFSG: http://www.debian.org/social_contract#guidelines
-.. _OSD: http://www.opensource.org/docs/definition.php
+.. note:: You do not need to run a server for locally-hosted
+   repositories.
