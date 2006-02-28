@@ -15,9 +15,10 @@ data_files = [('share/doc/Codeville-' + Codeville.version, ['LICENSE.txt'])]
 
 if sys.platform == 'win32':
     from distutils.core import Extension
-    plat_ext = [Extension("Codeville.winrandom",
-                          libraries = ['ws2_32', 'advapi32'],
-                          sources = ["src/winrand.c"])]
+    if sys.version < '2.4':
+        plat_ext = [Extension("Codeville.winrandom",
+                              libraries = ['ws2_32', 'advapi32'],
+                              sources = ["src/winrand.c"])]
     for i in xrange(len(scripts)):
         shutil.copy(scripts[i], scripts[i] + '.py')
         scripts[i] = scripts[i] + '.py'

@@ -1,0 +1,297 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<meta name="robots" content="index,nofollow">
+
+
+<title>ToDoList - Codeville Wiki</title>
+
+<script type="text/javascript">
+<!--// common functions
+
+// We keep here the state of the search box
+searchIsDisabled = false;
+
+function searchChange(e) {
+    // Update search buttons status according to search box content.
+    // Ignore empty or whitespace search term.
+    var value = e.value.replace(/\s+/, '');
+    if (value == '' || searchIsDisabled) { 
+        searchSetDisabled(true);
+    } else {
+        searchSetDisabled(false);
+    }
+}
+
+function searchSetDisabled(flag) {
+    // Enable or disable search
+    document.getElementById('fullsearch').disabled = flag;
+    document.getElementById('titlesearch').disabled = flag;
+}
+
+function searchFocus(e) {
+    // Update search input content on focus
+    if (e.value == 'Search') {
+        e.value = '';
+        e.className = '';
+        searchIsDisabled = false;
+    }
+}
+
+function searchBlur(e) {
+    // Update search input content on blur
+    if (e.value == '') {
+        e.value = 'Search';
+        e.className = 'disabled';
+        searchIsDisabled = true;
+    }
+}
+
+function actionsMenuInit(title) {
+    // Initiliaze action menu
+    for (i = 0; i < document.forms.length; i++) {
+        var form = document.forms[i];
+        if (form.className == 'actionsmenu') {
+            // Check if this form needs update
+            var div = form.getElementsByTagName('div')[0];
+            var label = div.getElementsByTagName('label')[0];
+            if (label) {
+                // This is the first time: remove label and do buton.
+                div.removeChild(label);
+                var dobutton = div.getElementsByTagName('input')[0];
+                div.removeChild(dobutton);
+                // and add menu title
+                var select = div.getElementsByTagName('select')[0];
+                var item = document.createElement('option');
+                item.appendChild(document.createTextNode(title));
+                item.value = 'show';
+                select.insertBefore(item, select.options[0]);
+                select.selectedIndex = 0;
+            }
+        }
+    }
+}
+//-->
+</script>
+
+<link rel="stylesheet" type="text/css" charset="utf-8" media="all" href="/wiki/modern/css/common.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="screen" href="/wiki/modern/css/screen.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="print" href="/wiki/modern/css/print.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="projection" href="/wiki/modern/css/projection.css">
+<link rel="alternate" title="Codeville Wiki Recent Changes" href="/doc/RecentChanges?action=rss_rc&amp;ddiffs=1&amp;unique=1" type="application/rss+xml">
+<link rel="Start" href="/doc/FrontPage">
+<link rel="Alternate" title="Wiki Markup" href="/doc/ToDoList?action=raw">
+<link rel="Alternate" media="print" title="Print View" href="/doc/ToDoList?action=print">
+<link rel="Search" href="/doc/FindPage">
+<link rel="Index" href="/doc/TitleIndex">
+<link rel="Glossary" href="/doc/WordIndex">
+<link rel="Help" href="/doc/HelpOnFormatting">
+</head>
+
+<body  lang="en" dir="ltr">
+
+<div id="header">
+<div id="logo"><a href="/doc/FrontPage">Codeville Wiki</a></div>
+
+<form id="searchform" method="get" action="">
+<div>
+<input type="hidden" name="action" value="fullsearch">
+<input type="hidden" name="context" value="180">
+<label for="searchinput">Search:</label>
+<input id="searchinput" type="text" name="value" value="" size="20"
+    onfocus="searchFocus(this)" onblur="searchBlur(this)"
+    onkeyup="searchChange(this)" onchange="searchChange(this)" alt="Search">
+<input id="titlesearch" name="titlesearch" type="submit"
+    value="Titles" alt="Search Titles">
+<input id="fullsearch" name="fullsearch" type="submit"
+    value="Text" alt="Search Full Text">
+</div>
+</form>
+<script type="text/javascript">
+<!--// Initialize search form
+var f = document.getElementById('searchform');
+f.getElementsByTagName('label')[0].style.display = 'none';
+var e = document.getElementById('searchinput');
+searchChange(e);
+searchBlur(e);
+//-->
+</script>
+
+<ul id="username">
+<li><a href="/doc/UserPreferences">Login</a></li>
+</ul>
+
+
+<ul id="navibar">
+<li class="wikilink"><a href="/doc/FrontPage">FrontPage</a></li>
+<li class="wikilink"><a href="/doc/RecentChanges">RecentChanges</a></li>
+<li class="wikilink"><a href="/doc/FindPage">FindPage</a></li>
+<li class="wikilink"><a href="/doc/HelpContents">HelpContents</a></li>
+<li class="current"><a href="/doc/ToDoList">ToDoList</a></li>
+</ul>
+
+<div id="pageline"><hr style="display:none;"></div>
+
+<ul class="editbar">
+<li>Immutable Page</li>
+<li><a href="/doc/ToDoList?action=diff">Show Changes</a></li>
+<li><a href="/doc/ToDoList?action=info">Get Info</a></li>
+<li>
+<form class="actionsmenu" method="get" action="">
+<div>
+    <label>More Actions:</label>
+    <select name="action"
+        onchange="if ((this.selectedIndex != 0) &&
+                      (this.options[this.selectedIndex].disabled == false)) {
+                this.form.submit();
+            }
+            this.selectedIndex = 0;">
+        <option value="raw">Show Raw Text</option>
+<option value="print">Show Print View</option>
+<option value="refresh">Delete Cache</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="AttachFile" disabled class="disabled">Attachments</option>
+<option value="SpellCheck">Check Spelling</option>
+<option value="LikePages">Show Like Pages</option>
+<option value="LocalSiteMap">Show Local Site Map</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="RenamePage" disabled class="disabled">Rename Page</option>
+<option value="DeletePage" disabled class="disabled">Delete Page</option>
+    </select>
+    <input type="submit" value="Do">
+</div>
+<script type="text/javascript">
+<!--// Init menu
+actionsMenuInit('More Actions:');
+//-->
+</script>
+</form>
+</li>
+</ul>
+
+</div>
+
+<div id="page" lang="en" dir="ltr">
+
+
+<h1 id="title"><a title="Click to do a full-text search for this title" href="/doc/ToDoList?action=fullsearch&amp;value=linkto%3A%22ToDoList%22&amp;context=180">ToDoList</a></h1>
+<div lang="en" id="content" dir="ltr">
+<a id="top"></a>
+
+<h2 id="head-f0ddbe170c3a4ff011f5e6346307fc1ed43c36f8">The Magic TODO list</h2>
+
+
+<h3 id="head-828aeba338521c34afb78c2a4aecb717b9c4b960">larger features</h3>
+
+<ul>
+<li><p> merge-through-conflict code (necessary in rare cases for revert and resurrection) </p>
+</li>
+<li><p> revert (for name operations, this already works for file contents) </p>
+</li>
+<li><p> resurrecting deleted files </p>
+</li>
+<li><p> access control lists on repository paths in the server </p>
+</li>
+<li><p> support for binaries </p>
+</li>
+<li><p> metadata (the execute bit, for instance) </p>
+</li>
+<li><p> internationalization </p>
+</li>
+<li><p> deal with case-insensitive file systems </p>
+</li>
+<li><p> more polish </p>
+</li>
+<li><p> cherry picking individual changes </p>
+</li>
+<li><p> rollback of individual changes </p>
+</li>
+</ul>
+
+<h3 id="head-63c561aa253b7bc2db911f1932855f5a4516a704">smaller stuff</h3>
+
+<ul>
+<li><p> Security audit of networking code </p>
+</li>
+<li><p> Shared secrets are stored encrypted against the users password, should also include a salt to protect against precomputed  dictionary attacks </p>
+</li>
+<li><p> Move authentication-related info out of the tree. </p>
+</li>
+<li><p> Graphical history browsing tool. </p>
+</li>
+<li><p> Graphical conflict resolution tool, something like dirdiff which can read the inline conflict info. </p>
+</li>
+<li><p> Code cleanup - there are places in the code (sync_history(), gen_changeset(), handle_contents_at_point()) which should be using DFS.py to do a topological sort instead of being ad-hoc about it. This is a good way to become more familiar with the code. </p>
+</li>
+<li><p> Replace the stop-and-wait changeset fetching over the network with something better. Ask on the mailing list for more details. </p>
+</li>
+<li><p> Better parallelize the delta fetching and history replaying by moving one of the 2 into a separate thread. </p>
+</li>
+<li><p> Documentation. Some <a class="nonexistent" href="/doc/HowTo">HowTo</a> guides would be especially useful for things like history browsing. </p>
+</li>
+<li><p> Fix the file ignore pattern stuff. Should probably work more like CVS. </p>
+</li>
+<li><p> Remember which files had conflicts after an update and have the status command display them. </p>
+</li>
+<li><p> Force users to resolve name conflicts before allowing relevent files to be committed. </p>
+</li>
+</ul>
+<a id="bottom"></a>
+
+</div>
+<p id="pageinfo" class="info" lang="en" dir="ltr">last edited 2006-02-24 01:50:46 by <span title="dsl081-051-135.sfo1.dsl.speakeasy.net">RossCohen</span></p>
+
+<div id="pagebottom"></div>
+</div>
+
+
+<div id="footer">
+<ul class="editbar">
+<li>Immutable Page</li>
+<li><a href="/doc/ToDoList?action=diff">Show Changes</a></li>
+<li><a href="/doc/ToDoList?action=info">Get Info</a></li>
+<li>
+<form class="actionsmenu" method="get" action="">
+<div>
+    <label>More Actions:</label>
+    <select name="action"
+        onchange="if ((this.selectedIndex != 0) &&
+                      (this.options[this.selectedIndex].disabled == false)) {
+                this.form.submit();
+            }
+            this.selectedIndex = 0;">
+        <option value="raw">Show Raw Text</option>
+<option value="print">Show Print View</option>
+<option value="refresh">Delete Cache</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="AttachFile" disabled class="disabled">Attachments</option>
+<option value="SpellCheck">Check Spelling</option>
+<option value="LikePages">Show Like Pages</option>
+<option value="LocalSiteMap">Show Local Site Map</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="RenamePage" disabled class="disabled">Rename Page</option>
+<option value="DeletePage" disabled class="disabled">Delete Page</option>
+    </select>
+    <input type="submit" value="Do">
+</div>
+<script type="text/javascript">
+<!--// Init menu
+actionsMenuInit('More Actions:');
+//-->
+</script>
+</form>
+</li>
+</ul>
+
+<ul id="credits">
+<li><a href="http://moinmoin.wikiwikiweb.de/">MoinMoin Powered</a></li>
+<li><a href="http://www.python.org/">Python Powered</a></li>
+<li><a href="http://validator.w3.org/check?uri=referer">Valid HTML 4.01</a></li>
+</ul>
+
+
+</div>
+</body>
+</html>
+

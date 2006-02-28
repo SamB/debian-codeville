@@ -19,7 +19,7 @@ except ImportError:
         raise ImportError, 'berkeleydb 4.1 or higher is required'
 
 history_format_version = 1
-rebuild_format_version = 1
+rebuild_format_version = 4
 
 class VersionMismatchException(Exception): pass
 

@@ -1,0 +1,118 @@
+
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
+   View [5]Search [6]Index [7]Glossary [8]Help
+
+   [9]Codeville Wiki
+   Search: ____________________ Titles Text
+     * [10]Login
+
+     * [11]FrontPage
+     * [12]RecentChanges
+     * [13]FindPage
+     * [14]HelpContents
+     * [15]ServerReference
+     _________________________________________________________________
+
+     * Immutable Page
+     * [16]Show Changes
+     * [17]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+[18]ServerReference
+
+Running a Server
+
+Unix and OS X
+
+Config file options
+
+   -c <configfile>
+
+   -n
+          no config file
+
+Files and Directories
+
+   -f <datadir>
+          where all the database files and password file go
+
+   -l <logfile>
+          server output goes here when daemonized
+
+   -p <pidfile>
+
+Control options
+
+   -b
+          start server in backup mode
+
+   -d
+          don"t daemonize, won"t write pidfile or logfile
+
+   -u <user>
+          run as the given user, must be root to do this
+
+   -r
+          rebuild internal data structures on startup
+
+General Notes
+
+   By default, the server will look for a config file in
+   /etc/cdvserver.conf. The distributed version includes the defaults for
+   the various options commented out. Command line options take
+   precedence over the config file.
+
+Windows
+
+   The above options largely apply, except the server does not look for a
+   config file by default, does not daemonize and assumes the data dir is
+   the current directory.
+
+Config File
+
+   The [control] section of the config file should be self-explanatory.
+   Key/value pairs in [post-commit] allow you to execute scripts in
+   response to checkins. Keys are regular expressions, matched against
+   the repository name. Values are scripts into which some XML describing
+   the checkin will be sent as stdin. The XML is the same as the output
+   of describe with the -x option, only there is also a <repository> tag
+   in the server generated version.
+
+   last edited 2006-02-24 01:03:09 by dsl081-051-135
+
+     * Immutable Page
+     * [19]Show Changes
+     * [20]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+     * [21]MoinMoin Powered
+     * [22]Python Powered
+     * [23]Valid HTML 4.01
+
+References
+
+   1. http://codeville.org/doc/RecentChanges?action=rss_rc&ddiffs=1&unique=1
+   2. http://codeville.org/doc/FrontPage
+   3. http://codeville.org/doc/ServerReference?action=raw
+   4. http://codeville.org/doc/ServerReference?action=print
+   5. http://codeville.org/doc/FindPage
+   6. http://codeville.org/doc/TitleIndex
+   7. http://codeville.org/doc/WordIndex
+   8. http://codeville.org/doc/HelpOnFormatting
+   9. http://codeville.org/doc/FrontPage
+  10. http://codeville.org/doc/UserPreferences
+  11. http://codeville.org/doc/FrontPage
+  12. http://codeville.org/doc/RecentChanges
+  13. http://codeville.org/doc/FindPage
+  14. http://codeville.org/doc/HelpContents
+  15. http://codeville.org/doc/ServerReference
+  16. http://codeville.org/doc/ServerReference?action=diff
+  17. http://codeville.org/doc/ServerReference?action=info
+  18. http://codeville.org/doc/ServerReference?action=fullsearch&value=linkto%3A%22ServerReference%22&context=180
+  19. http://codeville.org/doc/ServerReference?action=diff
+  20. http://codeville.org/doc/ServerReference?action=info
+  21. http://moinmoin.wikiwikiweb.de/
+  22. http://www.python.org/
+  23. http://validator.w3.org/check?uri=referer

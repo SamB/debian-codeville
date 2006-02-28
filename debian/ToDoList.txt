@@ -1,0 +1,105 @@
+
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
+   View [5]Search [6]Index [7]Glossary [8]Help
+
+   [9]Codeville Wiki
+   Search: ____________________ Titles Text
+     * [10]Login
+
+     * [11]FrontPage
+     * [12]RecentChanges
+     * [13]FindPage
+     * [14]HelpContents
+     * [15]ToDoList
+     _________________________________________________________________
+
+     * Immutable Page
+     * [16]Show Changes
+     * [17]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+[18]ToDoList
+
+The Magic TODO list
+
+larger features
+
+     * merge-through-conflict code (necessary in rare cases for revert
+       and resurrection)
+     * revert (for name operations, this already works for file contents)
+     * resurrecting deleted files
+     * access control lists on repository paths in the server
+     * support for binaries
+     * metadata (the execute bit, for instance)
+     * internationalization
+     * deal with case-insensitive file systems
+     * more polish
+     * cherry picking individual changes
+     * rollback of individual changes
+
+smaller stuff
+
+     * Security audit of networking code
+     * Shared secrets are stored encrypted against the users password,
+       should also include a salt to protect against precomputed
+       dictionary attacks
+     * Move authentication-related info out of the tree.
+     * Graphical history browsing tool.
+     * Graphical conflict resolution tool, something like dirdiff which
+       can read the inline conflict info.
+     * Code cleanup - there are places in the code (sync_history(),
+       gen_changeset(), handle_contents_at_point()) which should be using
+       DFS.py to do a topological sort instead of being ad-hoc about it.
+       This is a good way to become more familiar with the code.
+     * Replace the stop-and-wait changeset fetching over the network with
+       something better. Ask on the mailing list for more details.
+     * Better parallelize the delta fetching and history replaying by
+       moving one of the 2 into a separate thread.
+     * Documentation. Some [19]HowTo guides would be especially useful
+       for things like history browsing.
+     * Fix the file ignore pattern stuff. Should probably work more like
+       CVS.
+     * Remember which files had conflicts after an update and have the
+       status command display them.
+     * Force users to resolve name conflicts before allowing relevent
+       files to be committed.
+
+   last edited 2006-02-24 01:50:46 by RossCohen
+
+     * Immutable Page
+     * [20]Show Changes
+     * [21]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+     * [22]MoinMoin Powered
+     * [23]Python Powered
+     * [24]Valid HTML 4.01
+
+References
+
+   1. http://codeville.org/doc/RecentChanges?action=rss_rc&ddiffs=1&unique=1
+   2. http://codeville.org/doc/FrontPage
+   3. http://codeville.org/doc/ToDoList?action=raw
+   4. http://codeville.org/doc/ToDoList?action=print
+   5. http://codeville.org/doc/FindPage
+   6. http://codeville.org/doc/TitleIndex
+   7. http://codeville.org/doc/WordIndex
+   8. http://codeville.org/doc/HelpOnFormatting
+   9. http://codeville.org/doc/FrontPage
+  10. http://codeville.org/doc/UserPreferences
+  11. http://codeville.org/doc/FrontPage
+  12. http://codeville.org/doc/RecentChanges
+  13. http://codeville.org/doc/FindPage
+  14. http://codeville.org/doc/HelpContents
+  15. http://codeville.org/doc/ToDoList
+  16. http://codeville.org/doc/ToDoList?action=diff
+  17. http://codeville.org/doc/ToDoList?action=info
+  18. http://codeville.org/doc/ToDoList?action=fullsearch&value=linkto%3A%22ToDoList%22&context=180
+  19. http://codeville.org/doc/HowTo
+  20. http://codeville.org/doc/ToDoList?action=diff
+  21. http://codeville.org/doc/ToDoList?action=info
+  22. http://moinmoin.wikiwikiweb.de/
+  23. http://www.python.org/
+  24. http://validator.w3.org/check?uri=referer

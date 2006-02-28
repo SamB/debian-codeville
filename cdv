@@ -26,8 +26,9 @@ from Codeville.client import history, status, diff, describe, annotate
 from Codeville.client import update, commit, set_password, rebuild
 from Codeville.client import create_repo, remove_repo, list_repos
 from Codeville.client import find_co, server_to_tuple, Checkout
-from Codeville.client import cli_is_ancestor, cli_print_dag, cli_print_big_dag
+from Codeville.client import cli_is_ancestor, cli_print_mini_dag, cli_print_dag
 from Codeville.client import cli_construct, cli_heads, cli_last_modified
+from Codeville.client import term_encoding, text_encoding
 from Codeville.history import long_id, short_id
 from Codeville.history import ChangeNotKnown, ChangeNotUnique, ChangeBadRepository
 from getopt import gnu_getopt, GetoptError
@@ -59,14 +60,22 @@ def run_revert(co, opts, args):
     return revert(co, args, unmod_flag)
 
 def run_edit(co, opts, args):
-    return edit(co, args)
+    by_id = False
+    for (opt, arg) in opts:
+        if opt == '-i':
+            by_id = True
+    return edit(co, args, by_id=by_id)
 
 def run_history(co, opts, args):
     head, limit, skip = None, -1, 0
+    by_id = False
     v = 0
     for (opt, arg) in opts:
         if   opt == '-h':
             head = long_id(co, arg)
+
+        elif opt == '-i':
+            by_id = True
 
         elif opt == '-c':
             try:
@@ -88,7 +97,7 @@ def run_history(co, opts, args):
         elif opt == '-v':
             v = 1
 
-    return history(co, head, limit, skip, v, args)
+    return history(co, head, limit, skip, v, by_id, args)
 
 def run_status(co, opts, args):
     verbose = 0
@@ -103,10 +112,13 @@ def run_heads(co, opts, args):
 
 def run_last_mod(co, opts, args):
     uhead = None
+    by_id = False
     for (opt, arg) in opts:
         if opt == '-h':
             uhead = arg
-    return cli_last_modified(co, args[0], uhead)
+        elif opt == '-i':
+            by_id = True
+    return cli_last_modified(co, args[0], uhead, by_id)
 
 def run_diff(co, opts, args):
     print_new = False
@@ -150,6 +162,24 @@ def run_commit(co, opts, args):
             tstamp = mktime(strptime(arg, '%Y/%m/%d %H:%M:%S %Z'))
         elif opt == '-m':
             comment = arg
+            ucomment = comment.decode(term_encoding)
+            comment = ucomment.encode('utf8')
+        elif opt == '-M':
+            try:
+                fd = open(arg, "r")
+                comment = fd.read()
+                fd.close()
+            except IOError, err:
+                print 'error - Cannot read "%s": %s' % (arg, err[1])
+                return 1
+            try:
+                ucomment = comment.decode(text_encoding)
+                comment = ucomment.encode('utf8')
+            except UnicodeDecodeError:
+                print "error - Invalid %s characters in comment" % \
+                      (text_encoding,)
+                return 1
+
         elif opt == '-n':
             noserver = 1
     if noserver or co.repo is None:
@@ -175,15 +205,18 @@ def run_rebuild(co, opts, args):
 def run_is_ancestor(co, opts, args):
     return cli_is_ancestor(co, args[0], args[1])
 
-def run_print_history(co, opts, args):
-    return cli_print_big_dag(co, args)
-
 def run_print_dag(co, opts, args):
+    return cli_print_dag(co, args)
+
+def run_print_mini_dag(co, opts, args):
     uheads = []
+    by_id = False
     for (opt, arg) in opts:
         if opt == '-h':
             uheads.append(arg)
-    return cli_print_dag(co, args[0], uheads)
+        if opt == '-i':
+            by_id = True
+    return cli_print_mini_dag(co, args[0], uheads, by_id)
 
 def run_create(co, opts, args):
     remote = server_to_tuple(args[0])
@@ -261,7 +294,9 @@ options = {
     "diff":       ('d', 0,  "Display a diff"),
     "dont-merge": ('d', 0,  "Don't merge changes into the workspace"),
     "head":       ('h', 1, "Use <head> as the head"),
+    "id":         ('i', 0, "Treat name as a file identifier"),
     "message":    ('m', 1, "Use <message> as the commit message"),
+    "message-file": ('M', 1, "Get commit message from <file>"),
     "no-network": ('n', 0,  "Don't perform any network activity"),
     "new-files":  ('N', 0,  "Show diffs for new and deleted files"),
     "path":       ('p', 1, "<path> to client"),
@@ -281,21 +316,21 @@ commands = {
     'rename':     (run_rename,    2, 2,     []),
     'remove':     (run_remove,    1, None,  []),
     'revert':     (run_revert,    1, None,  ["unmodified"]),
-    'edit':       (run_edit,      1, None,  []),
+    'edit':       (run_edit,      1, None,  ["id"]),
     'annotate':   (run_annotate,  0, None,  ["revision"]), 
     'diff':       (run_diff,      0, None,  ["revision", "new-files"]),
     'describe':   (run_describe,  1, None,  ["diff", "xml"]),
-    'history':    (run_history,   0, None,  ["head", "count", "skip", "verbose"]),
+    'history':    (run_history,   0, None,  ["head", "id", "count", "skip", "verbose"]),
     'status':     (run_status,    0, None,  ["verbose"]),
     'heads':      (run_heads,     0, 0,     []),
-    'last-modified': (run_last_mod, 1, 1,   ["head"]),
+    'last-modified': (run_last_mod, 1, 1,   ["head", "id"]),
     'update':     (run_update,    0, 0,     ["dont-merge"]),
-    'commit':     (run_commit,    0, None,  ["backup", "date", "message", "no-network"]),
+    'commit':     (run_commit,    0, None,  ["backup", "date", "message", "message-file", "no-network"]),
     'construct':  (run_construct, 1, 1,     []),
     'rebuild':    (run_rebuild,   0, 0,     ["head"]),
     'is_ancestor': (run_is_ancestor, 2, 2,  []),
-    'print_dag':  (run_print_dag, 1, 1,     ["head"]),
-    'print_history': (run_print_history, 0, None, []),
+    'print_mini_dag': (run_print_mini_dag, 1, 1, ["head", "id"]),
+    'print_dag':  (run_print_dag, 0, None, []),
     'create':     (run_create,    1, 1,     []),
     'destroy':    (run_destroy,   1, 1,     []),
     'list-repos': (run_list,      0, 0,     []),
@@ -405,10 +440,24 @@ def run(args):
     optlist = optlist_unhandled
 
     # pull the subcommand
-    try:
-        cname = args.pop(0)
+    if len(args) == 0:
+        run_help()
+        return 1
+    user_cname = args.pop(0)
+    cname_list = []
+    for cname in commands.keys():
+        if cname.startswith(user_cname):
+            cname_list.append(cname)
+    if len(cname_list) > 1:
+        print 'Command \'%s\' is not specific enough.' % (user_cname,)
+        print 'Matching commands:\n\t',
+        print '\n\t'.join(cname_list)
+        return 1
+    elif len(cname_list) == 1:
+        cname = cname_list[0]
         command = commands[cname]
-    except (IndexError, KeyError):
+    else:
+        print '\'%s\' does not match any commands.' % (user_cname,)
         run_help()
         return 1
 
@@ -489,10 +538,11 @@ def run(args):
     except:
         print_exc()
 
-    # clean up and shut down
-    if co.txn is not None:
-        co.txn_abort(co.txn)
-    co.close()
+    if co is not None:
+        # clean up and shut down
+        if co.txn is not None:
+            co.txn_abort(co.txn)
+        co.close()
 
     return retval
 

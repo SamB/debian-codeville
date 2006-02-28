@@ -1,0 +1,296 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<meta name="robots" content="index,nofollow">
+
+
+<title>ServerReference - Codeville Wiki</title>
+
+<script type="text/javascript">
+<!--// common functions
+
+// We keep here the state of the search box
+searchIsDisabled = false;
+
+function searchChange(e) {
+    // Update search buttons status according to search box content.
+    // Ignore empty or whitespace search term.
+    var value = e.value.replace(/\s+/, '');
+    if (value == '' || searchIsDisabled) { 
+        searchSetDisabled(true);
+    } else {
+        searchSetDisabled(false);
+    }
+}
+
+function searchSetDisabled(flag) {
+    // Enable or disable search
+    document.getElementById('fullsearch').disabled = flag;
+    document.getElementById('titlesearch').disabled = flag;
+}
+
+function searchFocus(e) {
+    // Update search input content on focus
+    if (e.value == 'Search') {
+        e.value = '';
+        e.className = '';
+        searchIsDisabled = false;
+    }
+}
+
+function searchBlur(e) {
+    // Update search input content on blur
+    if (e.value == '') {
+        e.value = 'Search';
+        e.className = 'disabled';
+        searchIsDisabled = true;
+    }
+}
+
+function actionsMenuInit(title) {
+    // Initiliaze action menu
+    for (i = 0; i < document.forms.length; i++) {
+        var form = document.forms[i];
+        if (form.className == 'actionsmenu') {
+            // Check if this form needs update
+            var div = form.getElementsByTagName('div')[0];
+            var label = div.getElementsByTagName('label')[0];
+            if (label) {
+                // This is the first time: remove label and do buton.
+                div.removeChild(label);
+                var dobutton = div.getElementsByTagName('input')[0];
+                div.removeChild(dobutton);
+                // and add menu title
+                var select = div.getElementsByTagName('select')[0];
+                var item = document.createElement('option');
+                item.appendChild(document.createTextNode(title));
+                item.value = 'show';
+                select.insertBefore(item, select.options[0]);
+                select.selectedIndex = 0;
+            }
+        }
+    }
+}
+//-->
+</script>
+
+<link rel="stylesheet" type="text/css" charset="utf-8" media="all" href="/wiki/modern/css/common.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="screen" href="/wiki/modern/css/screen.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="print" href="/wiki/modern/css/print.css">
+<link rel="stylesheet" type="text/css" charset="utf-8" media="projection" href="/wiki/modern/css/projection.css">
+<link rel="alternate" title="Codeville Wiki Recent Changes" href="/doc/RecentChanges?action=rss_rc&amp;ddiffs=1&amp;unique=1" type="application/rss+xml">
+<link rel="Start" href="/doc/FrontPage">
+<link rel="Alternate" title="Wiki Markup" href="/doc/ServerReference?action=raw">
+<link rel="Alternate" media="print" title="Print View" href="/doc/ServerReference?action=print">
+<link rel="Search" href="/doc/FindPage">
+<link rel="Index" href="/doc/TitleIndex">
+<link rel="Glossary" href="/doc/WordIndex">
+<link rel="Help" href="/doc/HelpOnFormatting">
+</head>
+
+<body  lang="en" dir="ltr">
+
+<div id="header">
+<div id="logo"><a href="/doc/FrontPage">Codeville Wiki</a></div>
+
+<form id="searchform" method="get" action="">
+<div>
+<input type="hidden" name="action" value="fullsearch">
+<input type="hidden" name="context" value="180">
+<label for="searchinput">Search:</label>
+<input id="searchinput" type="text" name="value" value="" size="20"
+    onfocus="searchFocus(this)" onblur="searchBlur(this)"
+    onkeyup="searchChange(this)" onchange="searchChange(this)" alt="Search">
+<input id="titlesearch" name="titlesearch" type="submit"
+    value="Titles" alt="Search Titles">
+<input id="fullsearch" name="fullsearch" type="submit"
+    value="Text" alt="Search Full Text">
+</div>
+</form>
+<script type="text/javascript">
+<!--// Initialize search form
+var f = document.getElementById('searchform');
+f.getElementsByTagName('label')[0].style.display = 'none';
+var e = document.getElementById('searchinput');
+searchChange(e);
+searchBlur(e);
+//-->
+</script>
+
+<ul id="username">
+<li><a href="/doc/UserPreferences">Login</a></li>
+</ul>
+
+
+<ul id="navibar">
+<li class="wikilink"><a href="/doc/FrontPage">FrontPage</a></li>
+<li class="wikilink"><a href="/doc/RecentChanges">RecentChanges</a></li>
+<li class="wikilink"><a href="/doc/FindPage">FindPage</a></li>
+<li class="wikilink"><a href="/doc/HelpContents">HelpContents</a></li>
+<li class="current"><a href="/doc/ServerReference">ServerReference</a></li>
+</ul>
+
+<div id="pageline"><hr style="display:none;"></div>
+
+<ul class="editbar">
+<li>Immutable Page</li>
+<li><a href="/doc/ServerReference?action=diff">Show Changes</a></li>
+<li><a href="/doc/ServerReference?action=info">Get Info</a></li>
+<li>
+<form class="actionsmenu" method="get" action="">
+<div>
+    <label>More Actions:</label>
+    <select name="action"
+        onchange="if ((this.selectedIndex != 0) &&
+                      (this.options[this.selectedIndex].disabled == false)) {
+                this.form.submit();
+            }
+            this.selectedIndex = 0;">
+        <option value="raw">Show Raw Text</option>
+<option value="print">Show Print View</option>
+<option value="refresh">Delete Cache</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="AttachFile" disabled class="disabled">Attachments</option>
+<option value="SpellCheck">Check Spelling</option>
+<option value="LikePages">Show Like Pages</option>
+<option value="LocalSiteMap">Show Local Site Map</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="RenamePage" disabled class="disabled">Rename Page</option>
+<option value="DeletePage" disabled class="disabled">Delete Page</option>
+    </select>
+    <input type="submit" value="Do">
+</div>
+<script type="text/javascript">
+<!--// Init menu
+actionsMenuInit('More Actions:');
+//-->
+</script>
+</form>
+</li>
+</ul>
+
+</div>
+
+<div id="page" lang="en" dir="ltr">
+
+
+<h1 id="title"><a title="Click to do a full-text search for this title" href="/doc/ServerReference?action=fullsearch&amp;value=linkto%3A%22ServerReference%22&amp;context=180">ServerReference</a></h1>
+<div lang="en" id="content" dir="ltr">
+<a id="top"></a>
+
+<h2 id="head-0984c1f01c6a86a09c5a67b10f4d5a6b547b4276">Running a Server</h2>
+
+
+<h3 id="head-4751e77bfd7580d9fadafea0432c3236ee2ee3a6">Unix and OS X</h3>
+
+
+<h4 id="head-48fe00c0f200abdd45f07e8c9be62bab5bc97c1d">Config file options</h4>
+
+<dl>
+<dt> -c &lt;configfile&gt;</dt>
+<dd></dd>
+<dt> -n</dt>
+<dd><p>no config file </p>
+</dd>
+</dl>
+
+<h4 id="head-3f532a23a2ef390f18c01ffeb2fb95a35bd73fdb">Files and Directories</h4>
+
+<dl>
+<dt> -f &lt;datadir&gt;</dt>
+<dd><p>where all the database files and password file go </p>
+</dd>
+<dt> -l &lt;logfile&gt;</dt>
+<dd><p>server output goes here when daemonized </p>
+</dd>
+<dt> -p &lt;pidfile&gt;</dt>
+<dd></dd>
+</dl>
+
+<h4 id="head-b3b09b208f5605f260995f71ba15a4b353a0c7ab">Control options</h4>
+
+<dl>
+<dt> -b</dt>
+<dd><p>start server in backup mode </p>
+</dd>
+<dt> -d</dt>
+<dd><p>don"t daemonize, won"t write pidfile or logfile </p>
+</dd>
+<dt> -u &lt;user&gt;</dt>
+<dd><p>run as the given user, must be root to do this </p>
+</dd>
+<dt> -r</dt>
+<dd><p>rebuild internal data structures on startup </p>
+</dd>
+</dl>
+
+<h4 id="head-8eb4c4f1c2b3916cc51ede89209b6a48f1ada9e5">General Notes</h4>
+
+<p>By default, the server will look for a config file in <tt>/etc/cdvserver.conf</tt>. The distributed version includes the defaults for the various options commented out. Command line options take precedence over the config file. </p>
+
+<h3 id="head-4005fa6bc90bb6de5a4fd83b4e8854b3eea61482">Windows</h3>
+
+<p>The above options largely apply, except the server does not look for a config file by default, does not daemonize and assumes the data dir is the current directory. </p>
+
+<h3 id="head-b29503833a68b7d434cf309dd0ded07bac10df6a">Config File</h3>
+
+<p>The <tt>[control]</tt> section of the config file should be self-explanatory. Key/value pairs in <tt>[post-commit]</tt> allow you to execute scripts in response to checkins. Keys are regular expressions, matched against the repository name. Values are scripts into which some XML describing the checkin will be sent as stdin. The XML is the same as the output of describe with the <tt>-x</tt> option, only there is also a <tt>&lt;repository&gt;</tt> tag in the server generated version. </p>
+<a id="bottom"></a>
+
+</div>
+<p id="pageinfo" class="info" lang="en" dir="ltr">last edited 2006-02-24 01:03:09 by <span title="64.81.51.135=dsl081-051-135.sfo1.dsl.speakeasy.net">dsl081-051-135</span></p>
+
+<div id="pagebottom"></div>
+</div>
+
+
+<div id="footer">
+<ul class="editbar">
+<li>Immutable Page</li>
+<li><a href="/doc/ServerReference?action=diff">Show Changes</a></li>
+<li><a href="/doc/ServerReference?action=info">Get Info</a></li>
+<li>
+<form class="actionsmenu" method="get" action="">
+<div>
+    <label>More Actions:</label>
+    <select name="action"
+        onchange="if ((this.selectedIndex != 0) &&
+                      (this.options[this.selectedIndex].disabled == false)) {
+                this.form.submit();
+            }
+            this.selectedIndex = 0;">
+        <option value="raw">Show Raw Text</option>
+<option value="print">Show Print View</option>
+<option value="refresh">Delete Cache</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="AttachFile" disabled class="disabled">Attachments</option>
+<option value="SpellCheck">Check Spelling</option>
+<option value="LikePages">Show Like Pages</option>
+<option value="LocalSiteMap">Show Local Site Map</option>
+<option value="show" disabled class="disabled">--------</option>
+<option value="RenamePage" disabled class="disabled">Rename Page</option>
+<option value="DeletePage" disabled class="disabled">Delete Page</option>
+    </select>
+    <input type="submit" value="Do">
+</div>
+<script type="text/javascript">
+<!--// Init menu
+actionsMenuInit('More Actions:');
+//-->
+</script>
+</form>
+</li>
+</ul>
+
+<ul id="credits">
+<li><a href="http://moinmoin.wikiwikiweb.de/">MoinMoin Powered</a></li>
+<li><a href="http://www.python.org/">Python Powered</a></li>
+<li><a href="http://validator.w3.org/check?uri=referer">Valid HTML 4.01</a></li>
+</ul>
+
+
+</div>
+</body>
+</html>
+

@@ -1,39 +1,576 @@
-codeville (0.1.12-0) experimental; urgency=low
 
-  (From the NEWS section of the Codeville homepage)
+     * [1]Home
+     * [2]Download
+     * [3]News
+     * [4]Docs
+     * [5]Todo
 
-  5/7/2005: Version 0.1.12 is out!
-  New in this release:
+NEWS
 
-  * fixed: obscure issues in cdvupgrade pertaining to convergence
-  * fixed: small issue with changeset generation related to the
-  * above issue
-  * fixed: packaging issue which prevented code needed by cdvupgrade
-  * from being included
-  * fixed: a few issues with the new unified diff code
-  * fixed: setup.py reflects the new code license
-  * fixed: cdvupgrade fixed so running cdvupgrade on its own output
-  * is an identity operation
-  * fixed: cdvupgrade ignores floating history on servers
+   2/27/2005: Version 0.1.16 is out!
 
- -- Chad Walstrom <chewie@debian.org>  Thu, 12 May 2005 10:08:47 -0500
+   New in this release:
+     * Allow 'edit' to take --id
+     * fixed: worked around slightly malformed history with respect to
+       edits and deletes
+     * fixed: merges of edits and deletes should be explicit in
+       changesets
 
-codeville (0.1.11-0) experimental; urgency=low
+   Just a few cleanups, nothing too major.
+     _________________________________________________________________
 
-  In this version of Codeville, the biggest news for Debian is
-  probably the license change, which is now a BSD style license
-  instead of the Open Source License v2.0.
+   2/23/2005: Version 0.1.15 is out!
 
-  Usability enhancements were introduced upstream, as well as a new
-  merge algorithm and performance enhancements.
+   New in this release:
+     * Relax restriction of delete and content merges introduced in
+       previous release so we do not have to rewrite history yet
+     * skip compilation of winrandom.pyd if python 2.4 is installed
+       (Windows only)
+     * fixed: independent deletes should merge implicitly
+     * fixed: server does not rebuild when there are empty branches
+     * fixed: bug which caused all sorts of weird and bad symptoms
+       related to renames
+     * fixed: traceback on checkout from a keyboard interrupt
+     * fixed: reworked how comments are handled to really deal with
+       locales correctly
 
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  !! You must run cdvupgrade on any clients and servers for this    !!
-  !! release. Note that it is much faster to do fresh checkouts     !!
-  !! than to upgrade clients.                                       !!
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   All bugfixes here, no new features.
+     _________________________________________________________________
 
-  Read the upstream changelog for more details.
+   12/25/2005: Version 0.1.14 is out!
 
- -- Chad Walstrom <chewie@debian.org>  Fri,  6 May 2005 10:26:50 -0500
+   New in this release:
+     * Allow specifying files by id for several commands
+     * Quoting of CDVDIFF on Windows to allow diff programs with spaces
+     * Quick hack to preserve execute permissions during update
+     * Preserve ownership of the password file when using 'cdvpasswd'
+     * Partial subcommand matching, things like 'cdv di' and 'cdv up' now
+       work
+     * 'cdvserver' exits immediately after initialization when given -i
+     * Make 'cdvserver' shut down cleanly on various signals
+     * Force all comments to be encoded in utf8 (automatically converts
+       from local encoding)
+     * 'diff.py' works as a standalone program
+     * 'commit' accepts -M or --message-file to read commit message from
+       a file
+     * Big optimization to 'annotate'
+     * fixed: delete bugs due to internal ambiguities
+     * fixed: infinite loop when there were blank lines in the commit
+       message
+     * fixed: better cleanup when CDVDIFF fails
+     * fixed: better detection of problems with CDVDIFF
+     * fixed: 'revert' and 'construct' only worked from the root
+     * fixed: cdv-agent died with EINTR
+     * fixed: glob module removed files which don't exist from the
+       command line (Windows only)
+     * fixed: '...' expansion (Windows only)
+     * fixed: 'cdvserver' would accept history with implicit merges
+     * fixed: 'history' traceback when using -c
+     * fixed: 'history' traceback, especially obvious when working
+       serverless
+     _________________________________________________________________
 
+   7/18/2005: Version 0.1.13 is out!
+
+   New in this release:
+     * Patch from Sudhi Herle so codeville can find modules if not
+       installed in the standard python path
+     * 'annotate' feature courtesy of Yoshinori K. Okuji
+     * Patch to allow specifying changeset creation time on command line
+       from Lele Gaifax
+     * Rewritten command line parsing. Options can now be specified
+       anywhere on the command line, long options are supported and there
+       is some basic help
+     * Rewritten history browsing code for simplicity and performance
+     * fixed: creating a new server. Use 'cdvserver -i' to initialize a
+       server
+     * fixed: historical and current name checks, the old code had both
+       false positives and negatives for rename conflicts
+     * fixed: clear out files being edited on 'construct'
+     _________________________________________________________________
+
+   5/7/2005: Version 0.1.12 is out!
+
+   New in this release:
+     * fixed: obscure issues in cdvupgrade pertaining to convergence
+     * fixed: small issue with changeset generation related to the above
+       issue
+     * fixed: packaging issue which prevented code needed by cdvupgrade
+       from being included
+     * fixed: a few issues with the new unified diff code
+     * fixed: setup.py reflects the new code license
+     * fixed: cdvupgrade fixed so running cdvupgrade on its own output is
+       an identity operation
+     * fixed: cdvupgrade ignores floating history on servers
+     _________________________________________________________________
+
+   5/5/2005: Version 0.1.11 is out!
+
+   New in this release:
+     * optimized scanning the filesystem to find files which changed for
+       very large projects
+     * introduced 'cdv init' to replace manual 'mkdir CVILLE'
+     * use urandom if present, python 2.4 on windows no longer requires
+       the windrandom.pyd file
+     * 'cdv construct' is a little more robust
+     * changed history format to not allow implicit merges. this is a
+       huge performance improvement for histories with lots of branching
+       and merging.
+     * fancy new O(n * log(n)) match code replaces old O(n^3)
+       implementation. makes diffing and changeset generation faster and
+       should also generate better/more readable deltas.
+     * switched to zlib level 6 instead of 9, faster and not much of a
+       space hit
+     * use .cdv as the metadata directory instead of CVILLE
+     * modify cdvupgrade script to work on both clients and servers
+     * version the repository format so the tool doesn't munge an older
+       or newer database by accident
+     * changed license to BSD
+     * fixed: using external diff program on windows causes traceback
+     * fixed: bug where conflicts repeated during later merges
+     * fixed: test for detecting conflicts in files being committed or
+       updated is more strict
+     * fixed: cdvpasswd looks for a config file when passed -f
+     * fixed: 'cdv remove' does not require files to still be present in
+       the filesystem
+     * fixed: small issue when calling revert on an added file
+
+   Current items being worked on for the next release and later are:
+     * binary support
+     * big improvements to the latency of the network protocol
+     * smaller CPU and memory improvements
+     * changes to the merge algorithm so that we can prove things about
+       its behaviour
+
+   You must run cdvupgrade on any clients and servers for this release.
+   Note that it is much faster to do fresh checkouts than to upgrade
+   clients.
+     _________________________________________________________________
+
+   4/13/2005: Mailing list and self-hosting repository
+
+   There's a public mailing list up now. If you have questions or want to
+   partipate, send mail to devel at codeville dot org. The [6]todo list
+   is a good place to get started for helping out. More things will be
+   added to it soon. [7][list info]
+
+   The self-hosting repository which has existed since February of 2004
+   has been opened to the public. URL is
+   cdv://codeville.org/codeville/devel. Username 'anonymous' and the
+   password is blank.
+
+   I have to put in a note of thanks here to the folks at [8]Mosuki. They
+   have been using it in production since June of 2004 and done an
+   excellent job of finding bugs, stessing the system and pointing out
+   where the interface needs improvement.
+
+   Also of note, the next version will probably be under the BSD license.
+     _________________________________________________________________
+
+   1/24/2005: New documentation
+
+   A [9]client reference page has been added to the documentation. Thanks
+   to Keith Irwin for writing this up.
+
+   If it seems like releases have been slowing down, then you're
+   impatient. Geez, don't I get to take a vacation? In actual fact, they
+   have slowed down a bit. Partially, this is due to stability. Since
+   nothing has been really broken, I've been working on other things.
+   Some architectural design work has also been happening behind the
+   scenes. The next release will require a history rewrite in order to
+   address some non-critical, long standing bugs and to regain some
+   performance. Assuming that is as stable as the recent release, I will
+   get back to adding all those planned useful features.
+     _________________________________________________________________
+
+   12/11/2004: Version 0.1.10 is out!
+   New in this release:
+     * Un*x shell style filename expansion on windows
+     * 'rebuild' can be done from a given changenumber
+     * 'last-modified' can be done from a given changenumber
+     * 'update' recognizes repository URLs of the format
+       'cdv://server/{changenumber}'
+     * 'diff' can now take 'local' as either first or second -r argument
+     * 'diff' does not display diffs for files which exist on only 1 side
+       by default
+     * 'diff' takes -N switch to show diffs for files which exist on only
+       1 side
+     * fixed: critical bug where an invalid merge was generated and not
+       caught by the server
+     * fixed: locking bug on server when files are deleted
+     * fixed: traceback when committing from windows
+     * fixed: all files show up as modified after doing 'construct'
+     * fixed: server sending responses out of order
+     * fixed: merge done by 'update' was sometimes incorrect
+     * fixed: 'update -d' not pulling in diffs
+     * fixed: CVILLE directory could not be at the root of the filesystem
+     * fixed: 'diff -r repo' caused traceback
+     * fixed: 'revert' on a file deleted from the local filesystem caused
+       traceback
+
+   The critical bug is somewhat difficult to trigger, so it is unlikely
+   that others have run into it. If you see tracebacks with 'merge
+   error', this is what happened. Unfortunately, you have to figure out
+   where it happened and throw away all the changes after that.
+   Apologies, this is the first time something like this has happened in
+   about 8 months.
+
+   In this release, the bug is mostly worked around. A proper fix will be
+   in the next release. It will also fix some nuisance bugs with the
+   merge algorithm and eliminate the false positives when doing 'history'
+   on specific files. Potentially, performace will be better, as well.
+
+   Running 'rebuild' is required after upgrading.
+
+   Documentation is imminent. I promise.
+     _________________________________________________________________
+
+   9/21/2004: Version 0.1.9 is out!
+   New in this release:
+     * Allow user to be specified on client command line via -u
+     * Server port is configurable via the config file or -o on the
+       command line (-p is already being used, I need to switch to long
+       opts)
+     * Server catches exceptions and only shuts down the offending
+       connection, rather than exiting
+     * 'commit' takes -b for backup, makes it not generate a new
+       changeset
+     * 'history' accepts filenames on the command line
+     * New command 'heads' shows currents heads in the client
+     * New command 'last-modified' gives the last change to modify a file
+     * Server doesn't revalidate changes already committed to other
+       repositories, bedtter performance for branching and merging
+     * fixed: bad changesets being generated for some merge cases
+     * fixed: merging a change with its ancestor caused traceback
+     * fixed: locking bug on failed commit
+     * fixed: 'add' of CVILLE directory issued warning but did the add
+       anyway
+     * fixed: 'diff' with ... tries to diff files not open for edit
+
+   The first 2 bugs caused significant problems in the previous release
+   for branching and merging. Otherwise, this is mainly a small cleanup
+   release.
+
+   The new feature of 'history' only showing changes for files you're
+   interested in will occasionally give a false positive match. This will
+   be fixed in a future release. It will also show changes in which the
+   file was merged but not directly modified.
+     _________________________________________________________________
+
+   8/12/2004: Version 0.1.8 is out!
+   New in this release:
+     * Removed all significant sources of recursion, should handle long
+       histories now
+     * 'history' shows date of commit now, instead of date of changeset
+       creation
+     * 'describe' takes -d option, which shows a diff. Any additional
+       arguments are considered filenames for which you want to see diffs
+     * Better auxiliary data structure construction for better
+       performance
+     * Batch of micro-optimizations
+     * New commands 'print_history' and 'print_dag' for dumping graphviz
+       parseable graphs
+     * Several commands including 'diff' and 'commit' operate in offline
+       mode if no repository is set
+     * Any command which took a changeset number can now also take a
+       repository URL
+     * Implemented a fairly fragile 'construct' command to bring your
+       client to a particular history point.
+     *
+     * fixed: comment lost when merging back to a branch which has had no
+       subsequent changes
+     * fixed: reverting a file which has been deleted from the filesystem
+     * fixed: rare case where commit fails with message 'unfilled line'
+     * fixed: 'update -d' actually works
+     * fixed: a few minor tracebacks and wrong return values
+     * fixed: password changing works again
+     * fixed: little endian ints don't string sort properly
+
+   WARNING: The last bug fix requires a rebuild. Run 'rebuild' in your
+   clients and start the server with -r the first time you run it.
+
+   WARNING: Be careful with the 'construct' command! It will throw away
+   all your local changes without asking. It is also pretty fragile.
+   Cleanup will happen for the next release.
+
+   Overall, this release eliminates roughly 30% of the CPU work.
+
+   As mentioned briefly above, there is now an offline mode. This is
+   automatic when no repository is set. 'commit' will always be run with
+   the -n switch, 'diff' will diff against the last commit, etc.
+     _________________________________________________________________
+
+   7/21/2004: Quick bugfix release 0.1.7.1 pushed.
+   There was a dumb bug which caused a traceback when using the internal
+   diff in the previous release. Also a server traceback on post-commit
+   actions.
+     _________________________________________________________________
+
+   7/20/2004: Version 0.1.7 is out!
+   New in this release:
+     * Only check for repository being set when necessary
+     * 'diff' takes files to diff on command line
+     * Better temp file naming when using external diff program
+     * Slightly improved command line parsing
+     * 'status' now supports -v, which will show extra and missing files
+       via '??' and '!!'
+     * Support for '...' wildcard expansion in all commands taking
+       filenames, means recursive subdirectory scan
+     * Regular expression list to ignore for 'add' (wildcard expansion
+       only) and 'status -v'
+     * More XML elements in post-commit
+     * fixed: committing to unknown repository caused stack trace
+       (introduced in 0.1.6)
+     * fixed: 'revert' when result has conflicts
+     * fixed: 'edit' can only apply to files, not directories
+     *
+     * fixed: cdv-agent doesn't delete socket when using -a
+     *
+     * fixed: cdv-agent doesn't work on platforms without poll(), such as
+       OS X
+     * fixed: eval `cdv-agent` hangs
+     * fixed: check server post-commit patterns on startup
+     *
+     * fixed: cleanup of bsddb/bsddb3 loading
+     *
+     * fixed: traceback on unknown or non-unique change from user
+     * fixed: traceback in 'update' when directory deleted which is not
+       empty locally
+
+   Lot's of polish has been done recently, I'll be back to core features
+   pretty soon. And documentation. Really. I promise.
+
+   Work done on supporting wildcard expansion will, probably in the next
+   release, allow glob expansion for those poor souls using Windows
+   without a shell to do it for them.
+
+   The list of regular expressions to ignore should be in the file
+   CVILLE/ignore. One per line. They must match the entire path name of
+   the file to apply. So if you want to ignore all files ending with ~,
+   you would say '.*~'.
+
+   Keep in mind that the ignore patterns are also used by 'add' when
+   expanding the '...' wildcard. You may still add files ignored by the
+   expressions by explicitly naming them on the command line.
+     _________________________________________________________________
+
+   7/6/2004: Version 0.1.6 is out!
+   New in this release:
+     * Only ship sample cdvserver.conf. Prevents overwriting previous
+       config.
+     * Retry login a few times before failing
+     * Verbose mode for 'history' via -v
+     * 'history' command -m changed to -n
+     * 'history' now supports -s # to skip displaying the first # changes
+     * 'history' is relative to default (or named) repository
+     * Include a cdv-agent so people don't have to type their passwords
+       so much
+     * Changes to the crypto code. Fixes and changes to allow the agent
+       to work
+     * cdvpasswd reads the config file now
+     * cdvserver rereads password file when it changes, no longer
+       requires restart
+     * The various commands give return values
+     * Added a "merged files" section to 'status' and 'commit' during
+       merge operations
+     * Better UI for 'update'. View is similar to 'status' and sorts
+       files
+     * Turned a bunch of command line errors into warnings
+     * fixed: vi unhappy when /tmp is a symlink
+     * fixed: modify file then delete bug
+     * fixed: merge-only changes sometimes didn't show in 'history'
+
+   The new agent supports exactly the same command line interaction as
+   ssh-agent. It's basically transparent. If the enironment variables are
+   set, then clients will only ask for a password if they can't log in
+   using the agent. The password is then automatically added to the
+   agent.
+
+   There's no way the agent will work on windows. At least for now,
+   sorry.
+
+   Because of the crypto changes, it is not possible to mix and match new
+   and old clients and servers.
+     _________________________________________________________________
+
+   6/18/2004: Version 0.1.5 is out!
+   New in this release:
+     * Server acts like a real server. See [10]server reference for more
+       details.
+     * Server allows commands to be run after each commit
+     * 'commit' pops up an editor if no comment given on command line,
+       obeys CDVEDITOR and EDITOR environment variables, in that order
+     * 'commit' editor allows you to trim the list of files to commit
+     * 'commit' accepts files to commit on the command line
+     * 'history' view small UI cleanusp
+     * 'history' takes -m #, to limit the number of changes shown
+     * 'describe' UI cleanup
+     * 'diff' sorts files for output
+     * 'diff' supports external diff programs via the CDVDIFF environment
+       variable
+     * Report useful network error messages
+     * fixed: rebuilding client and server left buggy history cruft
+     * fixed: anonymous user should not be able to change password
+     * fixed: 'diff' throws exception sometimes when diffing between 2
+       branches
+     * fixed: 'revert -a' leaves files open for edit
+     * fixed: 'remove' on a tree of files would return errors due to
+       ordering
+     * fixed: 'update' after file added and removed remotely
+     * fixed: 'update' after multiple files removed remotely
+     * fixed: 'commit' after file modified then removed locally
+     * fixed: DNS failure throws exception
+     * fixed: 'update' on windows spewed \r's all over files open for
+       edit
+
+   Be sure to read the server reference, there are significant changes.
+
+   Python 2.3 is now required. There's too much useful stuff in there and
+   I'm only going to use more of it in the future.
+     _________________________________________________________________
+
+   6/8/2004: Version 0.1.4 is out!
+   New in this release:
+     * Server option -r for reconstructing support data structures on
+       startup
+     * Server option -b for backup server mode
+     * 'rebuild' command in client for reconstructing support data
+       structures
+     * 'is_ancestor' command in client, tells whether arg1 is an ancestor
+       of arg2
+     * Small cleanups
+     * 'remove' supports more than 1 file
+     * 'history' option -h for user-specified head
+     * 'update' option -d for pulling in changes without merging them
+       (does not affect local files or history)
+     * Catch generic exception in client and shut down cleanly
+     * fixed: modifying file while merging fails
+     * fixed: bad indexing structure creation prevents updating
+     * fixed: traceback on update when there are conflicts in local files
+     * fixed: tracebacks in various commands when file is removed from
+       local filesystem
+     * fixed: touched but unmodified files are erroneously included in
+       changesets
+     * fixed: server traceback when updating from non-existent repository
+     * fixed: CVILLE is a reserved filename at any depth in the tree
+     * fixed: removing a directory which isn't empty
+     * fixed: renaming over existing local file
+     * fixed: 'rename' second argument directory
+
+   Once again, mostly a bugfix release. Most of the new features
+   implemented were in support of bug-fixing activities.
+
+   When upgrading, you will need to run the server with the -r switch the
+   first time. You will also have to run
+cdv rebuild
+
+   in all clients.
+
+   The server now supports a backup mode. When started with -b, only
+   updates from other servers can be committed. In addition, only
+   incremental backups on an existing backup are allowed. The way to use
+   a backup server is create repositories as usual, then in a client
+   update from the repository you want to backup, then commit to the
+   backup server repository.
+     _________________________________________________________________
+
+   5/27/2004: Version 0.1.3 is out!
+   New in this release:
+     * fixed: windows file problems
+     * fixed: reusing names of deleted files
+     * fixed: commit ignored certain types of diffs
+     * fixed: files marked as editted but no actual changes caused
+       traceback
+     * fixed: files remain locked on server after commit error
+     * fixed: spurious conflicts when lines removed from beginning or end
+       of file
+     * fixed: 'revert' on windows
+     * fixed: traceback when no default repository set
+     * Catch generic exceptions in server and shut down cleanly
+     * Skip some unnecessary work on update
+     * Use /dev/urandom instead of /dev/random
+     * Confirm new password when changing passwords
+
+   This is largely a bugfix release. Notably, this one should be useful
+   under Windows. You will still have to execute as:
+C:\Python23\python.exe C:\Python23\Scripts\cdv.py ...
+
+   Wildcard expansion doesn't work on Windows yet.
+
+   A fairly elegant cherry-picking scheme has been worked out, but will
+   have to wait until more of the basic functionality is implemented.
+
+   I have upgraded my machine and am now using python 2.3. From now on,
+   the rpm packages I make available will be for python 2.3. Please
+   report problems with python 2.2 to me, as the current plan is to
+   continue supporting it.
+     _________________________________________________________________
+
+   4/19/2004: Version 0.1.2 is out!
+   New in this release:
+     * Large performance improvements, works much better on large
+       projects now
+     * A crude "describe" command
+     * Explicit edit mode, user specifies which files are modified
+       instead of codeville detecting it automatically (not on by
+       default)
+     * Windows port
+     * Better overlapping of CPU work with waiting on the network
+     * Better feedback to the user during update
+
+   Old clients will no longer work, the backend format has changed.
+   Neither will old servers. To convert your server, first create a new
+   directory where the new server will reside. Then run:
+cdvupgrade old_server_dir/ new_server_dir/
+
+   Then copy over the codeville_repository and passwd files.
+     _________________________________________________________________
+
+   3/3/2004: New release version 0.1.1 is out!
+   New in this release:
+     * Install script and RPM
+     * New network protocol, authentication is now secure
+     * Password changing through the client
+     * Works out of the box with python 2.3
+     * Much improved status view
+     * Miscellaneous little fixes
+     * License changed to the Open Software License 2.0
+     _________________________________________________________________
+
+   3/3/2004: [11]Slides from the Codecon presentation are up.
+     _________________________________________________________________
+
+   2/6/2004: If you are using an older version update NOW! There was a
+   serious bug in some of the DAG code. Do not reuse your old
+   repositories or clients. If you need to recover them, let me know and
+   I'll write a conversion tool. The command line syntax for commit and
+   update has changed, please look through the quickstart.
+
+   -- [12]Bram and [13]Ross
+
+     * [14]Home
+     * [15]Download
+     * [16]News
+     * [17]Docs
+     * [18]Todo
+
+References
+
+   1. http://codeville.org/
+   2. http://codeville.org/download.php
+   3. http://codeville.org/news.php
+   4. http://codeville.org/doc/
+   5. http://codeville.org/doc/ToDoList
+   6. http://codeville.org/docs/todo.php
+   7. http://mail.off.net/mailman/listinfo/codeville-devel
+   8. http://mosuki.com/
+   9. http://codeville.org/docs/reference.php
+  10. http://codeville.org/docs/server.php
+  11. http://codeville.org/codecon/
+  12. http://bitconjurer.org/
+  13. mailto:rcohen@snurgle.removeme.org
+  14. http://codeville.org/
+  15. http://codeville.org/download.php
+  16. http://codeville.org/news.php
+  17. http://codeville.org/doc/
+  18. http://codeville.org/doc/ToDoList

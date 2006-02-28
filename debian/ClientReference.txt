@@ -1,0 +1,309 @@
+
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
+   View [5]Search [6]Index [7]Glossary [8]Help
+
+   [9]Codeville Wiki
+   Search: ____________________ Titles Text
+     * [10]Login
+
+     * [11]FrontPage
+     * [12]RecentChanges
+     * [13]FindPage
+     * [14]HelpContents
+     * [15]ClientReference
+     _________________________________________________________________
+
+     * Immutable Page
+     * [16]Show Changes
+     * [17]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+[18]ClientReference
+
+Codeville commands
+
+Options
+
+   -p, --path
+          <path> to client
+
+   -R, --repository
+          <repository> for this operation
+
+   -u, --user
+          <user> as whom to perform this operation
+
+   -V, --version
+          Print version information
+
+Subcommands
+
+add <files>
+     * Add new files to the repository. All files must be added before
+       they will be part of the version control system.
+     _________________________________________________________________
+
+commit [-b] [-m <comment>|-M <comment-file>] [-D <date>] [-n]
+     * Commits all changes made to the repository since the last commit.
+       A comment is required for every commit. It may either be supplied
+       via the -m option for simple comments or if the -m option is
+       omitted, whatever editor is specified in the EDITOR environment
+       variable will be launched. If no editor is specified, vi is the
+       default in all unixy environments (including OS X and cygwin) and
+       Notepad is the default in Windows. In the editor, a comment may be
+       added at the top, and file changes which the user does not wish to
+       have in a given changeset can be removed by deleting them from the
+       "### files" list at the bottom (although merging cannot be avoided
+       through deleting things from the "### merge files" list). Every
+       commit creates a changeset. If there are changes since the last
+       update, files will be merged. In the event of unresolved
+       conflicts, the user will be prompted to resolve them.
+
+   -b, --backup
+          Forces commit to not make a new changeset. This will commit
+          changes which have already been committed locally via -n (or as
+          a result of having multiple repositories involved), but will
+          not create a new changeset for existing file modifications.
+          This is especially needed for committing to back-up servers
+          (servers started with -b) as it is the only way to commit
+          changes to a back-up server. This is not the recommended way to
+          commit changes to normal servers. In general, if one wishes to
+          commit changes committed offline without committing new
+          changes, one should commit and changeset with all the files in
+          the "### files" list removed.
+
+   -D, --date
+          YYYY/MM/DD HH:MM:SS TZ indicating changeset creation time
+
+   -m, --message
+          Use message as the commit message
+
+   -M, --message-file
+          Get commit message from file
+
+   -n, --no-network
+          is used to commit changes off-line. Changes committed off-line
+          can still be used with all commands, but are not visible to
+          other users until an on-line commit is done.
+     _________________________________________________________________
+
+construct <changeset>
+     * Recreates the repository at the given changeset.
+     _________________________________________________________________
+
+create <repository name>
+     * Creates a new repository with the appropriate name.
+     _________________________________________________________________
+
+describe [-x|-d] [-s] <changeset>
+     * Gives the description of the changeset including the long name of
+       the change, the user who made the change, that date it was made,
+       the comment, the relation it has to other changesets, and what
+       files were modified and in what manner they were modified (i.e.
+       added, modified, renamed, or deleted).
+
+   -d, --diff
+          does a diff
+
+   -x, --xml
+          displays an XML version of the output. This is not compatible
+          with displaying a diff. This can only be used with
+          parenthesized changesets from the file history. It's sort of a
+          hack right now, really.
+     _________________________________________________________________
+
+destroy <repository>
+     * Destroys a repository. The opposite of create.
+     _________________________________________________________________
+
+diff [-r <changeset> [-r <changeset>] ] [<files>]
+     * Does a diff between different versions of each of given files. If
+       no files are specified, all relevant files are shown. The first -r
+       option indicates which changeset the diff should be from, the
+       second which it should be to. If no changesets are specified, it
+       shows the difference between the last known state of the
+       repository and the current client state.
+     _________________________________________________________________
+
+edit <files>
+     * Enables editting a file. When not in edit-mode, this is
+       unnecessary.
+     _________________________________________________________________
+
+heads
+     * Lists the root nodes in the graph of changesets.
+     _________________________________________________________________
+
+history [-h <changeset>] [-c <count>] [-s <skip count>] [-v] [<files>]
+     * Gives the history of the repository or of the files specified.
+       Specifically, it lists all relevant change sets by short name,
+       user, date, and comment in most recent first order.
+
+   -c, --count
+          print only the specified number of changes.
+
+   -h, --head
+          print the history starting at the given changeset.
+
+   -s, --skip
+          skips the first skip count changes.
+
+   -v, --verbose
+          causes it to print the changes verbosely which includes
+          additional information about each changeset which affected the
+          files.
+     _________________________________________________________________
+
+init
+     * Initialize a new client with the current directory as the root.
+       Specify a directory other than current one by using the top level
+       -p switch.
+     _________________________________________________________________
+
+is_ancestor <changeset1> <changeset2>
+     * Tells whether or not changeset1 is an ancestor of changeset2. Note
+       that it is possible for neither changeset to be an ancestor of the
+       other.
+     _________________________________________________________________
+
+last-modified <file>
+     * Returns the last changeset which modified a given file.
+     _________________________________________________________________
+
+list-repos
+     * Lists all the repositories on the same server as the repository
+       you are in.
+     _________________________________________________________________
+
+password
+     * Change your password.
+     _________________________________________________________________
+
+print_dag [-h <changeset>] [-h <changeset>] [...] <file>
+     * Prints the directed acyclic graph which shows the changesets which
+       have been applied to a file and their relationships.
+       Changesets specified with -h are treated as head nodes for the
+       graph (i.e. later changesets are excluded).
+     _________________________________________________________________
+
+print_history [<changeset>]
+     * Prints the directed acylcic graph of the the entire history.
+       Starts at the given changeset, if provided.
+     _________________________________________________________________
+
+rebuild
+     * Recreates all of the metadata from the static history. This should
+       generally only be done when instructed to by software upgrade
+       instructions.
+     _________________________________________________________________
+
+remove <files>
+     * Deletes files from the repository.
+     _________________________________________________________________
+
+rename <file> <newname>
+     * Moves or renames files.
+     _________________________________________________________________
+
+revert [-a] <files>
+     * Reverts any local changes to the file. At this time only changes
+       to the content of the file can be reverted. The ability to revert
+       adds, deletes, and renames will be coming in the future.
+       There is a subtle difference in the definition of revert from what
+       you might expect. It does not guarantee that it will restore the
+       file to some previous state. For example, if you are in the middle
+       of a merge and call revert on a file, it will be regenerated by
+       running the merge. If the file were modified prior to running the
+       merge update, the file contents will now be different from anytime
+       in the past.
+       Revert should be thought of as throwing away uncommitted changes.
+
+   -a, --unmodified
+          indicates files should only be reverted if they have not been
+          modified. Basically unmarks them as open for edit.
+     _________________________________________________________________
+
+set <variable> <value>
+     * Sets a Codeville variable to a given value.
+     _________________________________________________________________
+
+show-vars
+     * Show a list of all Codeville variables and what they are set to.
+     _________________________________________________________________
+
+status [-v]
+     * Shows changes not yet committed to the repository in brief.
+
+   -v, --verbose
+          A more verbose status which includes mention of files which are
+          in the directory space, but not in the repository and files
+          missing from the directory space.
+     _________________________________________________________________
+
+unset <variable>
+     * Removes a Codeville variable so that it no longer has any setting.
+     _________________________________________________________________
+
+update [-d]
+     * Gets all changes made to the repository since the last time you
+       did an update. Files will be merged as necessary. In the event of
+       unresolved conflicts, the user will be asked to resolve them.
+
+   -d, --dont-merge
+          Pull in changesets but do not merge them. Has no effect on the
+          workspace state. This allows a user to browse and diff
+          changesets without having to merge.
+
+   Specifying files:
+
+General Notes
+
+   Files can be specified using bash-style wildcards on any platform. In
+   addition, '...' behaves like a find command, expanding all files and
+   directories within subdirectories.
+
+   All printed graphs are output in a format intended to be run through
+   the graphviz "dot" tool.
+
+   Using tcsh as the startup shell under cygwin appears to result in the
+   Python password command hanging, so it is incompatible with Codeville
+   and there's not a thing we can do about it.
+
+   last edited 2005-09-12 04:49:11 by RossCohen
+
+     * Immutable Page
+     * [19]Show Changes
+     * [20]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+     * [21]MoinMoin Powered
+     * [22]Python Powered
+     * [23]Valid HTML 4.01
+
+References
+
+   1. http://codeville.org/doc/RecentChanges?action=rss_rc&ddiffs=1&unique=1
+   2. http://codeville.org/doc/FrontPage
+   3. http://codeville.org/doc/ClientReference?action=raw
+   4. http://codeville.org/doc/ClientReference?action=print
+   5. http://codeville.org/doc/FindPage
+   6. http://codeville.org/doc/TitleIndex
+   7. http://codeville.org/doc/WordIndex
+   8. http://codeville.org/doc/HelpOnFormatting
+   9. http://codeville.org/doc/FrontPage
+  10. http://codeville.org/doc/UserPreferences
+  11. http://codeville.org/doc/FrontPage
+  12. http://codeville.org/doc/RecentChanges
+  13. http://codeville.org/doc/FindPage
+  14. http://codeville.org/doc/HelpContents
+  15. http://codeville.org/doc/ClientReference
+  16. http://codeville.org/doc/ClientReference?action=diff
+  17. http://codeville.org/doc/ClientReference?action=info
+  18. http://codeville.org/doc/ClientReference?action=fullsearch&value=linkto%3A%22ClientReference%22&context=180
+  19. http://codeville.org/doc/ClientReference?action=diff
+  20. http://codeville.org/doc/ClientReference?action=info
+  21. http://moinmoin.wikiwikiweb.de/
+  22. http://www.python.org/
+  23. http://validator.w3.org/check?uri=referer

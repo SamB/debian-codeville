@@ -3,19 +3,24 @@
 
 import binascii
 from entropy import random_string
-from os import chmod, fdopen, path, remove, rename
+from os import chmod, fdopen, path, remove, rename, stat
 import SRP
 from sys import platform
 from tempfile import mkstemp
 
+if platform != 'win32':
+    from os import lchown
+
 class Passwd:
-    def __init__(self, pw_file, create=0):
+    def __init__(self, pw_file, create=False, uid=-1):
         self.users = {}
         self.pw_file = pw_file
         self.pw_dir = path.split(pw_file)[0]
         self.modtime = 0
         if create:
             h = open(self.pw_file, 'a')
+            if uid != -1:
+                lchown(self.pw_file, uid, -1)
             chmod(self.pw_file, 0600)
             h.close()
         self._read()
@@ -109,6 +114,9 @@ class Passwd:
         h.writelines(text)
         h.close()
 
+        if platform != 'win32':
+            statinfo = stat(self.pw_file)
+            lchown(fname, statinfo.st_uid, statinfo.st_gid)
         chmod(fname, 0600)
         if platform == 'win32':
             remove(self.pw_file)

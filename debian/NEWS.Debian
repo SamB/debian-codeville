@@ -1,0 +1,47 @@
+codeville (0.1.16-1) unstable; urgency=low
+
+  * New upstream version and some documentation changes for the Debian
+    package.  Documents are now pulled from the Codeville website and
+    wiki using the debian/rules target `doc-update'.
+
+ -- Chad Walstrom <chewie@debian.org>  Tue, 28 Feb 2006 11:12:56 -0600
+
+codeville (0.1.12-0) experimental; urgency=low
+
+  (From the NEWS section of the Codeville homepage)
+
+  5/7/2005: Version 0.1.12 is out!
+  New in this release:
+
+  * fixed: obscure issues in cdvupgrade pertaining to convergence
+  * fixed: small issue with changeset generation related to the
+  * above issue
+  * fixed: packaging issue which prevented code needed by cdvupgrade
+  * from being included
+  * fixed: a few issues with the new unified diff code
+  * fixed: setup.py reflects the new code license
+  * fixed: cdvupgrade fixed so running cdvupgrade on its own output
+  * is an identity operation
+  * fixed: cdvupgrade ignores floating history on servers
+
+ -- Chad Walstrom <chewie@debian.org>  Thu, 12 May 2005 10:08:47 -0500
+
+codeville (0.1.11-0) experimental; urgency=low
+
+  In this version of Codeville, the biggest news for Debian is
+  probably the license change, which is now a BSD style license
+  instead of the Open Source License v2.0.
+
+  Usability enhancements were introduced upstream, as well as a new
+  merge algorithm and performance enhancements.
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  !! You must run cdvupgrade on any clients and servers for this    !!
+  !! release. Note that it is much faster to do fresh checkouts     !!
+  !! than to upgrade clients.                                       !!
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  Read the upstream changelog for more details.
+
+ -- Chad Walstrom <chewie@debian.org>  Fri,  6 May 2005 10:26:50 -0500
+

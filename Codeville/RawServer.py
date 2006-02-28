@@ -36,14 +36,14 @@ class SingleSocket:
         except socket.error:
             return 'no connection'
 
-    def close(self):
+    def close(self, unregister=True):
         # print 'RawServer close: ' + str(self.fileno)
         # print_stack()
         sock = self.socket
         self.socket = None
         self.buffer = []
-        del self.raw_server.single_sockets[self.fileno]
-        self.raw_server.poll.unregister(sock)
+        if unregister:
+            self.raw_server.unregister(self.fileno)
         sock.close()
 
     def shutdown(self, val):
@@ -90,6 +90,8 @@ class RawServer:
         self.doneflag = doneflag
         self.noisy = noisy
         self.errorfunc = errorfunc
+        if self.errorfunc == None:
+            self.errorfunc = lambda x: sys.stderr.write(str(x) + "\n")
         self.funcs = []
         self.externally_added = []
         self.server = None
@@ -239,7 +241,13 @@ class RawServer:
 #            for ss in self.single_sockets.values():
 #                ss.close()
             if self.server is not None:
+                self.poll.unregister(self.server)
                 self.server.close()
+
+    def unregister(self, fd):
+        del self.single_sockets[fd]
+        self.poll.unregister(fd)
+        return
 
     def _close_dead(self):
         while len(self.dead_from_write) > 0:
@@ -251,11 +259,16 @@ class RawServer:
 
     def _close_socket(self, s, msg=None):
         sock = s.socket.fileno()
-        s.socket.close()
         self.poll.unregister(sock)
         del self.single_sockets[sock]
+        s.socket.close()
         s.socket = None
-        s.handler.connection_lost(s, msg)
+        try:
+            s.handler.connection_lost(s, msg)
+        except:
+            data = StringIO()
+            print_exc(file = data)
+            self.errorfunc(data.getvalue())
 
 # everything below is for testing
 
@@ -495,8 +508,11 @@ def test_both_close():
         del db.data_in[:]
         assert db.lost == []
 
-        ca.close()
-        cb.close()
+        sa.unregister(ca.fileno)
+        sb.unregister(cb.fileno)
+
+        ca.close(unregister=False)
+        cb.close(unregister=False)
         sleep(1)
 
         assert da.external_made == []

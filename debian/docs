@@ -1,3 +1,9 @@
-debian/quickstart.html
-debian/reference.html
-debian/server.html
+debian/NEWS
+debian/ClientReference.html
+debian/ClientReference.txt
+debian/QuickStartGuide.html
+debian/QuickStartGuide.txt
+debian/ServerReference.html
+debian/ServerReference.txt
+debian/ToDoList.html
+debian/ToDoList.txt

@@ -17,6 +17,20 @@ UPSTREAM_VERSION=$(shell dpkg-parsechangelog|sed -n -e 's/^Version: \(.*\)-.*/\1
 # Pure python library for site-python directory
 DEB_PYTHON_INSTALL_ARGS_ALL = --no-compile -O0 --install-purelib=/usr/lib/site-python
 
+doc-update: doc-update-stamp
+doc-update-stamp:
+	@echo "Fetching documentation from site and wiki."
+	lynx -dump http://codeville.org/news.php > debian/NEWS
+	lynx -dump http://codeville.org/doc//QuickStartGuide > debian/QuickStartGuide.txt
+	lynx -source http://codeville.org/doc//QuickStartGuide > debian/QuickStartGuide.html
+	lynx -dump http://codeville.org/doc/ServerReference > debian/ServerReference.txt
+	lynx -source http://codeville.org/doc/ServerReference > debian/ServerReference.html
+	lynx -dump http://codeville.org/doc/ClientReference > debian/ClientReference.txt
+	lynx -source http://codeville.org/doc/ClientReference > debian/ClientReference.html
+	lynx -dump http://codeville.org/doc/ToDoList > debian/ToDoList.txt
+	lynx -source http://codeville.org/doc/ToDoList > debian/ToDoList.html
+	: > $@
+
 # codeville tries to install documentation in the Right Place(TM), but
 # gets it wrong for Debian.  Already included the LICENSE.txt in the
 # copyright file.
@@ -27,3 +41,4 @@ common-install-indep::
 
 clean::
 	-find -name \*.pyc -exec rm \{\} \;
+	-rm doc-update-stamp

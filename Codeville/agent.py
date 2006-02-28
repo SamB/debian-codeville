@@ -6,9 +6,9 @@ from crypt import crypt
 from errno import EINTR
 import os
 try:
-    from select import poll, POLLIN, POLLOUT, POLLHUP
+    import select
 except ImportError:
-    from selectpoll import poll, POLLIN, POLLOUT, POLLHUP
+    import selectpoll as select
 import sha
 import socket
 import SRP
@@ -24,7 +24,7 @@ class Agent:
         self.auth_path = None
         self.auth_file = None
 
-        self.poll_obj = poll()
+        self.poll_obj = select.poll()
 
         self.hstatus = {}
         self.identities = {}
@@ -56,7 +56,7 @@ class Agent:
         while not self.shutdown_flag:
             try:
                 sock_list = self.poll_obj.poll()
-            except socket.error, reason:
+            except select.error, reason:
                 if reason[0] != EINTR:
                     raise
             else:
@@ -196,11 +196,11 @@ class Agent:
                 self._new_socket(AUTH_CONNECTION, nsock[0])
 
             elif status['type'] == AUTH_CONNECTION:
-                if   event & POLLHUP:
+                if event & select.POLLHUP:
                     self._close_socket(sock)
                     return
 
-                if event & POLLIN:
+                if event & select.POLLIN:
                     data = sock.recv(1024)
                     if len(data) == 0:
                         self._close_socket(sock)
@@ -210,7 +210,7 @@ class Agent:
                     status['input'].write(data)
                     self._process_message(sock)
 
-                if event & POLLOUT:
+                if event & select.POLLOUT:
                     self._flush_socket(sock)
 
         return
@@ -225,9 +225,9 @@ class Agent:
                                        'out_offset': 0,
                                        'sock':       sock}
 
-        flags = POLLIN
+        flags = select.POLLIN
         if type != AUTH_SOCK:
-            flags |= POLLHUP
+            flags |= select.POLLHUP
         self.poll_obj.register(sock, flags)
         return
 
@@ -250,7 +250,8 @@ class Agent:
 
         if written != len(data):
             status['output'].write(data[written:])
-            self.poll_obj.register(sock.fileno(), POLLIN|POLLOUT|POLLHUP)
+            self.poll_obj.register(sock.fileno(),
+                                   select.POLLIN|select.POLLOUT|select.POLLHUP)
         return
 
     def _write_error(self, sock, msg):
@@ -271,6 +272,6 @@ class Agent:
             data = status['output'].read(1024)
 
         if len(data) == 0:
-            self.poll_obj.register(sock.fileno(), POLLIN|POLLHUP)
+            self.poll_obj.register(sock.fileno(), select.POLLIN|select.POLLHUP)
 
         return

@@ -161,11 +161,10 @@ class ClientHandler:
         self.socket[s][UpdateInfo]['head'] = head
 
         if self.co.lcrepo.has_key(head):
-            named, modified = handles_in_branch(self.co, lstate['heads'],
-                                                [head], None,
-                                                deleted_modified=True)
+            named, modified, added, deleted = \
+                   handles_in_branch(self.co, lstate['heads'], [head], None)
             self._update_checks(s, mid, named, modified)
-            self._update_handle_list(s, lstate, named, modified)
+            self._update_handle_list(s, lstate, named, modified, added, deleted)
             self._update_finish(s, lstate)
             self.socket[s][UpdateInfo]['head'] = head
             self.rs.doneflag.set()
@@ -223,10 +222,13 @@ class ClientHandler:
         if lstate['count'] == 0:
             sync_history(self.co, lstate['head'], lstate['txn'],
                                     cache=lstate['changes'])
-            named, modified = handles_in_branch(self.co, lstate['heads'], [lstate['head']], lstate['txn'], cache=lstate['changes'], deleted_modified=True)
+            named, modified, added, deleted = \
+                   handles_in_branch(self.co,
+                                     lstate['heads'], [lstate['head']],
+                                     lstate['txn'], cache=lstate['changes'])
             del lstate['changes']
             self._update_checks(s, rstate['ref'], named, modified)
-            self._update_handle_list(s, lstate, named, modified)
+            self._update_handle_list(s, lstate, named, modified, added, deleted)
 
             handle_list = lstate['handle list']
             # get all the related file diffs
@@ -307,11 +309,12 @@ class ClientHandler:
         self.socket[s][UpdateInfo]['modified'] = []
         self.socket[s][UpdateInfo]['modified conflicts'] = []
 
-    def _update_handle_list(self, s, lstate, named, modified):
+    def _update_handle_list(self, s, lstate, named, modified, added, deleted):
         uinfo = self.socket[s][UpdateInfo]
         func = lstate['update function']
 
-        handles, nconflicts = func(self.co, uinfo, named, modified,
+        handles, nconflicts = func(self.co, uinfo,
+                                   named, modified, added, deleted,
                                    lstate['txn'])
 
         handle_list = lstate['handle list']
@@ -620,7 +623,12 @@ def update_file(co, handle, pre_heads, rhead, names, dcache, txn):
 
     rinfo = handle_contents_at_point(co, handle, rhead, txn, dcache=dcache)
 
-    if co.editsdb.has_key(handle) and bdecode(co.editsdb.get(handle)).has_key('hash'):
+    if rinfo.has_key('delete'):
+        # File was deleted remotely, we're done
+        # XXX: validate remote history
+        return 0
+
+    elif co.editsdb.has_key(handle) and bdecode(co.editsdb.get(handle)).has_key('hash'):
         lfile = _handle_to_filename(co, handle, names, txn)
         lfile = path.join(co.local, lfile)
 
@@ -635,9 +643,11 @@ def update_file(co, handle, pre_heads, rhead, names, dcache, txn):
 
         olines = find_conflict(lines, line_points, points, rinfo['lines'],
                                rinfo['line points'], rinfo['points'])
+
     else:
         file_points, points = gen_file_points(1)
         if file_points == []:
+            # The remote copy is a superset of local changes
             olines = rinfo['lines']
         else:
             lines, line_points, points = find_conflict_multiple_safe(file_points)

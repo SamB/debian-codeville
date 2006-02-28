@@ -1,0 +1,197 @@
+
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
+   View [5]Search [6]Index [7]Glossary [8]Help
+
+   [9]Codeville Wiki
+   Search: ____________________ Titles Text
+     * [10]Login
+
+     * [11]FrontPage
+     * [12]RecentChanges
+     * [13]FindPage
+     * [14]HelpContents
+     * [15]QuickStartGuide
+     _________________________________________________________________
+
+     * Immutable Page
+     * [16]Show Changes
+     * [17]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+[18]QuickStartGuide
+
+   All client instructions below assume you are within your workspace
+   directory, not including the .cdv dir.
+
+Creating a new project
+
+   Create a workspace directory and populate it with the files you want
+   checked in. Within that directory:
+cdv init
+cdv set user <username>
+cdv set repository <URL>
+cdv create <URL>
+cdv add ...
+cdv commit
+
+   Note: use of an email address as the username is recommended.
+
+   If you do not wish to collaborate with others or use a server for any
+   other purpose, skip both setting repository and running create.
+
+   A repository URL has the following form:
+cdv://<server>[:<port>]/<repository>
+
+Check out an existing project
+
+cdv init
+cdv set user <username>
+cdv set repository <URL>
+cdv update
+
+Making changes
+
+   Codeville automatically detects when you have edited files in a
+   client.
+
+   Rename or move files or directories:
+cdv rename <source> <dest>
+
+   Delete files or directories:
+cdv remove <files>
+
+   View your changes:
+cdv diff [-r <changeset1> [-r <changeset2>]]
+
+   One -r flag will specify the change to diff from, a second the change
+   to diff to. By default, the first change is the most recent change
+   from the default repository (or the repository specied by -R). The
+   second defaults to local, which is the current state of the workspace.
+
+   Show a more compact list of changes:
+cdv status
+
+   When you are happy with your changes:
+cdv commit
+
+Reverting changes
+
+   Discard uncommitted file edits:
+cdv revert <file>
+
+   Only changes to a file's contents can be reverted at this time. Name
+   operations (add, delete, rename) are not yet reversible.
+
+Taking branches
+
+   Branch using your current client state:
+cdv create <URL2>
+cdv -R <URL2> commit
+
+   URL2 does not need to be on the same server as the URL you are
+   branching from.
+
+Merging branches
+
+   To merge URL2 into URL, from a client with URL set as the repository:
+cdv update
+cdv -R <URL2> update
+(Resolve any name or merge conflicts)
+cdv commit
+
+   You may continue using branches after you have merged them. Codeville
+   supports arbitrary branching, merging and remerging of any and all
+   branches.
+
+Resolving conflicts
+
+   File conflicts are presented in a similar fashion to CVS. Conflicting
+   sections of the file will be marked with <<<<<<<, ======= and >>>>>>>.
+
+   Naming conflicts will result in mangled filenames. Look for files and
+   directories which end with .nameconflict.local, .orphaned, .loop, etc.
+   Sometimes there will be a file with a ".info" extension which contains
+   where the file exists according to the update which caused the
+   problem.
+
+Other stuff
+
+   View history:
+cdv history
+
+   This could use some explanation, but for now the change in parentheses
+   is what brought this change into the repository. If you branch or
+   merge, you may notice that many changes have the same one in
+   parentheses.
+
+Starting a server
+
+   Choose a directory to start the server in. Change into the directory
+   and run:
+cdvserver -i -f .
+
+   You will also need to create at least 1 account. Do this by running
+   the cdvpasswd program in the server directory, for example:
+cdvpasswd -f passwd add <username>
+
+   The special username "anonymous" is only allowed to do read operations
+   on the repository.
+
+   Run cdvserver:
+cdvserver -n -d -f <server directory>
+
+   You now have a running server. Running without -d will cause the
+   server to fork off into the background and generally act more
+   server-like. See the server reference for more details.
+
+Miscellaneous notes
+
+   Performance should be reasonable, there are still more optimizations
+   to be done. For now, you will get better performance by updating after
+   each commit.
+
+   All files are assumed to be text. That is, Codeville will attempt to
+   merge them. Support for binaries and non-ascii encoded files will
+   happen before 1.0.
+
+   At this point the repository format should be stable enough that there
+   will always be an upgrade path for the servers.
+
+   last edited 2005-10-06 23:46:50 by RossCohen
+
+     * Immutable Page
+     * [19]Show Changes
+     * [20]Get Info
+     * More Actions:
+       [Show Raw Text......] Do
+
+     * [21]MoinMoin Powered
+     * [22]Python Powered
+     * [23]Valid HTML 4.01
+
+References
+
+   1. http://codeville.org/doc/RecentChanges?action=rss_rc&ddiffs=1&unique=1
+   2. http://codeville.org/doc/FrontPage
+   3. http://codeville.org/doc/QuickStartGuide?action=raw
+   4. http://codeville.org/doc/QuickStartGuide?action=print
+   5. http://codeville.org/doc/FindPage
+   6. http://codeville.org/doc/TitleIndex
+   7. http://codeville.org/doc/WordIndex
+   8. http://codeville.org/doc/HelpOnFormatting
+   9. http://codeville.org/doc/FrontPage
+  10. http://codeville.org/doc/UserPreferences
+  11. http://codeville.org/doc/FrontPage
+  12. http://codeville.org/doc/RecentChanges
+  13. http://codeville.org/doc/FindPage
+  14. http://codeville.org/doc/HelpContents
+  15. http://codeville.org/doc/QuickStartGuide
+  16. http://codeville.org/doc/QuickStartGuide?action=diff
+  17. http://codeville.org/doc/QuickStartGuide?action=info
+  18. http://codeville.org/doc/QuickStartGuide?action=fullsearch&value=linkto%3A%22QuickStartGuide%22&context=180
+  19. http://codeville.org/doc/QuickStartGuide?action=diff
+  20. http://codeville.org/doc/QuickStartGuide?action=info
+  21. http://moinmoin.wikiwikiweb.de/
+  22. http://www.python.org/
+  23. http://validator.w3.org/check?uri=referer

@@ -17,7 +17,7 @@ from Codeville.db import VersionMismatchException
 from Codeville.db import check_format_version, check_rebuild_version
 from Codeville.db import write_rebuild_version
 from Codeville.server import ServerHandler, ServerError
-from Codeville.history import rebuild_from_points
+from Codeville.history import rebuild_from_points, rootnode
 from ConfigParser import ConfigParser
 from getopt import getopt, GetoptError
 import os
@@ -126,6 +126,14 @@ def run(args):
 
     metadata_dir = path.join(config.get('control', 'datadir'), '.cdv')
 
+    # create the handler object
+    global sh
+    try:
+        sh = ServerHandler(config)
+    except ServerError, msg:
+        print 'Error - %s' % (msg,)
+        return 1
+
     # make sure we can read the repository format
     repo_marker = path.join(config.get('control', 'datadir'),
                             'codeville_repository')
@@ -135,6 +143,9 @@ def run(args):
             return 1
         crp = open(repo_marker, 'w')
         crp.close()
+
+        sh.db_init(init=initialize)
+        return 0
 
     else:
         if not path.exists(repo_marker):
@@ -152,14 +163,6 @@ def run(args):
         int(config.get('control', 'port'))
     except ValueError:
         print 'Invalid port %s' % config.get('control', 'port')
-        return 1
-
-    # start the server
-    global sh
-    try:
-        sh = ServerHandler(config)
-    except ServerError, msg:
-        print 'Error - %s' % (msg,)
         return 1
 
     # bind the port before forking so that we can report errors
@@ -216,7 +219,7 @@ def run(args):
                 sh.close()
                 return 1
 
-        sh.db_init(init=initialize)
+        sh.db_init()
 
         pid = os.fork()
         if pid:
@@ -227,11 +230,19 @@ def run(args):
         pidhandle.close()
 
     else:
-        sh.db_init(init=initialize)
+        sh.db_init()
 
     if rebuild:
         print 'Rebuilding...'
+
+        # Don't sync the same point twice, this includes the root node
         points = sh.repolistdb.values()
+        unique_points = dict.fromkeys(points)
+        if unique_points.has_key(rootnode):
+            del unique_points[rootnode]
+        points = unique_points.keys()
+        points[:0] = [rootnode]
+
         txn = sh.txn_begin()
         rebuild_from_points(sh, points, txn)
         sh.txn_commit(txn)
@@ -246,6 +257,8 @@ def run(args):
     retval = 0
 
     print 'Listening for clients...'
+    signal.signal(signal.SIGHUP, signal_handler)
+    signal.signal(signal.SIGPIPE, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     try:

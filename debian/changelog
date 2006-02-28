@@ -1,3 +1,16 @@
+codeville (0.1.16-1) unstable; urgency=low
+
+  * New upstream version.  Closes: #353158
+  * debian/{reference.html,client.html,server.html}: Replaced with
+    text and html version of documents on the Codeville wiki.
+  * debian/NEWS: Replaced with text version of news.php file on Codeville
+    site.
+  * debian/ToDoList.{txt,html}: Pulled from Codeville wiki.
+  * debian/rules: added `doc-update' target to run lynx to update wiki/web
+    documentation pull. (Maintainer help tool.  Not run by default.)
+
+ -- Chad Walstrom <chewie@debian.org>  Tue, 28 Feb 2006 11:10:11 -0600
+
 codeville (0.1.13-1) unstable; urgency=low
 
   * New upstream version.
