@@ -1,0 +1,51 @@
+.TH "CDVSERVER" 1 "Dec 1 2005"
+.SH NAME 
+cdvserver \- server for the codeville distributed revision system.
+.SH SYNOPSIS
+.B cdvserver [\-c \fBfile\fP | \-n] [\-f \fBfile\fP] [\-l \fBfile\fP] [-p \fBfile\fP] [\-b] [\-d] [\-r] [\-u \fBuser\fP]
+.SH DESCRIPTION
+This manual page documents briefly the \fBcdvserver\fP 
+command.
+This manual page was written for the Debian distribution
+because the original program does not have a manual page.
+.PP
+\fBcdvserver\fP is a server for the codeville distributed 
+revision system.  A server keeps track of revisions and holds a 
+database used for revision control.   The codeville system
+needs both a server and a client.  \fBcdv\fP is the only
+known codeville client.
+.SH OPTIONS
+.B \-c <configfile>
+Specify file to use as a configuration file.
+.TP 
+.B \-n
+Don't use a configuration file.
+.TP
+.B \-f <datadir> 
+Specify where all the database files and password file go.
+.TP 
+.B \-l <logfile> 
+Specify where the server output goes when daemonized.
+.TP 
+.B \-p <pidfile>
+Specify a file to hold the process ID of the server in.
+.TP 
+.B \-b
+Start server in backup mode.
+.TP 
+.B \-d 
+Don't daemonize, won't write pidfile or logfile.
+.TP 
+.B \-u <user>
+Run as the given user, must be root to do this.
+.TP 
+.B \-r 
+Rebuild internal data structures on startup.
+.SH SEE ALSO 
+.BR cdv (1), 
+.BR cdvpasswd (1), 
+.UR http://www.codeville.org
+.BR http://www.codeville.org
+.SH AUTHOR
+This manual page was written by Michael Janssen <jamuraa@debian.org>,
+for the Debian GNU/Linux system (but may be used by others).

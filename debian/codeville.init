@@ -1,0 +1,98 @@
+#! /bin/sh
+
+### BEGIN INIT INFO
+# Provides:          codeville
+# Required-Start:    $network $local_fs
+# Required-Stop:     $network $local_fs
+# Should-Start:      
+# Should-Stop:       
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start a codeville server
+# Description:       Starts a codeville daemon for remote
+#                    access to codeville repositories.
+### END INIT INFO
+
+set -e
+
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+DESC="codeville server"
+NAME=cdvserver
+DAEMON=/usr/bin/$NAME
+PIDFILE=/var/run/$NAME.pid
+SCRIPTNAME=/etc/init.d/codeville
+
+# Gracefully exit if the package has been removed.
+test -x $DAEMON || exit 0
+
+DATADIR=/var/lib/codeville
+LOGFILE=/var/log/codeville.log
+
+# Read config file if it is present.
+if [ -r /etc/default/codeville ]
+then
+. /etc/default/codeville
+fi
+
+# Add optional option $1 with argument $2 to OPTS, if $2 is nonempty
+add_opt () {
+if ! test -z "$2" ; then
+OPTS="$OPTS $1 $2"
+fi
+}
+
+# Add arguments for start-stop-daemon, based on variables set in
+# /etc/default/$NAME
+OPTS=""
+add_opt --chroot "$DAEMONCHROOT"
+add_opt --chdir "$DAEMONCHDIR"
+add_opt --nicelevel "$DAEMONNICE"
+METAOPTS="$OPTS"
+
+#
+#Function that starts the daemon/service.
+#
+d_start() {
+if [ $START_CODEVILLE -ne 1 ]; then
+	echo -n "disabled in /etc/default/codeville"
+else
+	echo -n "$NAME"
+	start-stop-daemon --start --background --quiet \
+	--pidfile "$PIDFILE" \
+	$METAOPTS \
+	--exec $DAEMON -- -c /etc/cdvserver.conf
+fi
+}
+
+#
+#Function that stops the daemon/service.
+#
+d_stop() {
+start-stop-daemon --stop --oknodo --quiet --pidfile "$PIDFILE"
+}
+
+case "$1" in
+  start)
+echo -n "Starting $DESC: "
+d_start
+echo "."
+;;
+  stop)
+echo -n "Stopping $DESC: $NAME"
+d_stop
+echo "."
+;;
+  restart|force-reload)
+echo -n "Restarting $DESC: $NAME"
+d_stop
+sleep 1
+d_start
+echo "."
+;;
+  *)
+echo "Usage: $SCRIPTNAME {start|stop|restart|force-reload}" >&2
+exit 1
+;;
+esac
+
+exit 0

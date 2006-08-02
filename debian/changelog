@@ -1,3 +1,12 @@
+codeville (0.1.16-2) unstable; urgency=low
+
+  * Added manpages for cdv, cdvserver, cdvpasswd, cdv-agent, and
+    cdvupgrade. Closes: #325806
+  * Bump Standards-Version to 3.7.2.0
+  * Migrate to python-support and new python policy. Closes: #380762
+
+ -- Michael Janssen <jamuraa@debian.org>  Tue,  1 Aug 2006 22:31:37 -0500
+
 codeville (0.1.16-1) unstable; urgency=low
 
   * New upstream version.  Closes: #353158

@@ -3,14 +3,17 @@ Section: devel
 Priority: optional
 Maintainer: Michael Janssen <jamuraa@debian.org>
 Uploaders: Chad Walstrom <chewie@debian.org>
-Build-Depends: debhelper (>= 4.1.38), cdbs (>= 0.4.27), python-dev (>=2.3), python-dev (<< 2.4)
-Standards-Version: 3.6.2.2
+Build-Depends: cdbs (>= 0.4.43), python-all-dev (>= 2.3.5-11), debhelper (>= 5.0.37.2)
+Build-Depends-Indep: python-support (>= 0.3)
+Standards-Version: 3.7.2.0
 
 
 Package: codeville
 Architecture: all
-Depends: python(>= 2.3), python(<< 2.4), ${misc:Depends}, ${shlibs:Depends}
+Depends: ${python:Depends}, ${misc:Depends}, ${shlibs:Depends}
 Recommends: python-psyco
+Provides: ${python:Provides}
+XB-Python-Version: ${python:Versions}
 Description: a distributed version control system
  Codeville is a python-based distributed version control system that
  began with a novel idea for a merge algorithm and has grown from

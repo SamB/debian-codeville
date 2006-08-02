@@ -17,9 +17,16 @@ with Debian's Python package.
 
 Running the Server
 ==================
-This package currently does not provide an init.d mechanism for which to start
-the Codeville server.  Please read the documentation in
-/usr/share/doc/codeville regarding the server script and its configuration.
+This package provides an init.d mechanism for which to start
+the Codeville server.  This server is disabled by default - in order
+to enable the server, change START_CODEVILLE to 1 in the /etc/default/codeville
+file.
 
 .. note:: You do not need to run a server for locally-hosted
    repositories.
+
+Upgrading Repositories
+======================
+Because Codeville is a new version control system, the on-disk format of the
+repository changes from time to time.  The script cdvupgrade is provided
+in order to upgrade an older on-disk format to a newer one.

@@ -1,0 +1,5 @@
+debian/cdv.1
+debian/cdv-agent.1
+debian/cdvpasswd.1
+debian/cdvserver.1
+debian/cdvupgrade.1

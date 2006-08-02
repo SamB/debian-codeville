@@ -1,0 +1,18 @@
+# Default configuration for bittorrent tracker, bttrack
+
+# If you want the bittorrent tracker to run, switch this to 1.
+START_CODEVILLE=0
+
+# chroot to this directory before starting the daemon.  This can also help keep
+# the daemon secure, but may interact with all sorts of file locations in
+# unexpected ways.
+#DAEMONCHROOT=/var/local/lib/cdv-sandbox
+
+# Move to this directory before starting the daemon.  This may be useful in
+# conjunction with DAEMONCHROOT.
+#DAEMONCHDIR=/var/local/lib/cdv-sandbox
+
+# Run the daemon at this "nice" priority.  Setting a positive value here will
+# dissuade the system from giving all its CPU time to bttrack requests from the
+# network.
+DAEMONNICE=5
