@@ -1,3 +1,10 @@
+codeville (0.1.16-3) unstable; urgency=low
+
+  * Codeville runs fine on newer pythons, so let it work on 2.4.
+    Closes: #385455
+
+ -- Michael Janssen <jamuraa@debian.org>  Wed,  6 Sep 2006 07:36:10 -0500
+
 codeville (0.1.16-2) unstable; urgency=low
 
   * Added manpages for cdv, cdvserver, cdvpasswd, cdv-agent, and
