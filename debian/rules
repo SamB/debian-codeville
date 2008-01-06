@@ -23,7 +23,7 @@ UPSTREAM_VERSION=$(shell dpkg-parsechangelog|sed -n -e 's/^Version: \(.*\)-.*/\1
 doc-update: doc-update-stamp
 doc-update-stamp:
 	@echo "Fetching documentation from site and wiki."
-	lynx -dump http://codeville.org/news.php > debian/NEWS
+	lynx -dump http://codeville.org/news.php > debian/NEWS.upstream
 	lynx -dump http://codeville.org/doc//QuickStartGuide > debian/QuickStartGuide.txt
 	lynx -source http://codeville.org/doc//QuickStartGuide > debian/QuickStartGuide.html
 	lynx -dump http://codeville.org/doc/ServerReference > debian/ServerReference.txt
@@ -40,7 +40,7 @@ doc-update-stamp:
 common-install-indep::
 	mkdir -p debian/codeville/etc
 	mv debian/codeville/usr/share/doc/Codeville-$(UPSTREAM_VERSION)/cdvserver.conf.sample \
-		debian/codeville/etc/
+		debian/codeville/etc/cdvserver.conf
 	rm -rf debian/codeville/usr/share/doc/Codeville-$(UPSTREAM_VERSION)
 
 clean::

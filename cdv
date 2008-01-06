@@ -28,6 +28,7 @@ from Codeville.client import create_repo, remove_repo, list_repos
 from Codeville.client import find_co, server_to_tuple, Checkout
 from Codeville.client import cli_is_ancestor, cli_print_mini_dag, cli_print_dag
 from Codeville.client import cli_construct, cli_heads, cli_last_modified
+from Codeville.client import cli_handle_to_filename
 from Codeville.client import term_encoding, text_encoding
 from Codeville.history import long_id, short_id
 from Codeville.history import ChangeNotKnown, ChangeNotUnique, ChangeBadRepository
@@ -286,6 +287,13 @@ def run_annotate(co, opts, args):
 
     return annotate(co, rev, args)
 
+def run_id_to_name(co, opts, args):
+    head = 'local'
+    for (opt, arg) in opts:
+        if opt == '-h':
+            head = arg
+    return cli_handle_to_filename(co, head, args)
+
 options = {
     "unmodified": ('a', 0,  "Only files which were not modified"),
     "backup":     ('b', 0,  "Backup existing changesets, don't create a new one"),
@@ -331,13 +339,14 @@ commands = {
     'is_ancestor': (run_is_ancestor, 2, 2,  []),
     'print_mini_dag': (run_print_mini_dag, 1, 1, ["head", "id"]),
     'print_dag':  (run_print_dag, 0, None, []),
+    'id_to_name': (run_id_to_name, 1, 1,    ["head"]),
     'create':     (run_create,    1, 1,     []),
     'destroy':    (run_destroy,   1, 1,     []),
     'list-repos': (run_list,      0, 0,     []),
     'set':        (run_set,       2, 2,     []),
     'unset':      (run_unset,     1, 1,     []),
     'show-vars':  (run_show_vars, 0, 0,     []),
-    'password':   (run_password,  0, 0,     [])
+    'password':   (run_password,  0, 0,     []),
     }
 
 def run_help():

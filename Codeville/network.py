@@ -165,4 +165,5 @@ class NetworkHandler:
 
     def close(self, s):
         s.close()
+        self.socket[s]['mlen'] = 0
         del self.socket[s]

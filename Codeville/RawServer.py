@@ -55,7 +55,7 @@ class SingleSocket:
     def write(self, s):
         assert self.socket is not None
         self.buffer.append(s)
-        if len(self.buffer) == 1:
+        if self.connected and len(self.buffer) == 1:
             self.try_write()
         return not len(self.buffer)
 
@@ -80,7 +80,7 @@ class SingleSocket:
             self.raw_server.poll.register(self.socket, all)
 
 class RawServer:
-    def __init__(self, doneflag, timeout_check_interval, timeout, noisy = True, errorfunc = None):
+    def __init__(self, doneflag, timeout_check_interval, timeout):
         self.timeout_check_interval = timeout_check_interval
         self.timeout = timeout
         self.poll = poll()
@@ -88,10 +88,6 @@ class RawServer:
         self.single_sockets = {}
         self.dead_from_write = []
         self.doneflag = doneflag
-        self.noisy = noisy
-        self.errorfunc = errorfunc
-        if self.errorfunc == None:
-            self.errorfunc = lambda x: sys.stderr.write(str(x) + "\n")
         self.funcs = []
         self.externally_added = []
         self.server = None
@@ -135,7 +131,7 @@ class RawServer:
             raise
         except Exception, e:
             raise socket.error(str(e))
-        self.poll.register(sock, POLLIN)
+        self.poll.register(sock, POLLIN|POLLOUT|POLLERR)
         s = SingleSocket(self, sock, handler)
         self.single_sockets[sock.fileno()] = s
         return s
@@ -217,11 +213,6 @@ class RawServer:
                         except KeyboardInterrupt:
                             print_exc()
                             return
-                        except:
-                            if self.noisy:
-                                data = StringIO()
-                                print_exc(file = data)
-                                self.errorfunc(data.getvalue())
                     self._close_dead()
                     self.handle_events(events)
                     if self.doneflag.isSet():
@@ -263,12 +254,7 @@ class RawServer:
         del self.single_sockets[sock]
         s.socket.close()
         s.socket = None
-        try:
-            s.handler.connection_lost(s, msg)
-        except:
-            data = StringIO()
-            print_exc(file = data)
-            self.errorfunc(data.getvalue())
+        s.handler.connection_lost(s, msg)
 
 # everything below is for testing
 

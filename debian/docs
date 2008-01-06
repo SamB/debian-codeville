@@ -1,4 +1,4 @@
-debian/NEWS
+debian/NEWS.upstream
 debian/ClientReference.html
 debian/ClientReference.txt
 debian/QuickStartGuide.html

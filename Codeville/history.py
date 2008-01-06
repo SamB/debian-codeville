@@ -159,7 +159,7 @@ def read_diff(co, handle, point, txn):
     return diff
 
 def _read_diff(index, hfile):
-    if not index.has_key('handle'):
+    if not index.has_key('handle') or not index['handle'].has_key('offset'):
         return None
     try:
         hfile.seek(index['handle']['offset'])
@@ -175,7 +175,7 @@ def write_diff(co, handle, diff, txn):
         hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'r+b')
         #fend = struct.unpack('<I', cdagdb.get('diffend', txn=txn))[0]
         #hfile = open(path.join(co.cpath, 'diffs'), 'r+b')
-    except TypeError:
+    except (TypeError, struct.error):
         fend = 0
         hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'wb')
         #hfile = open(path.join(co.cpath, 'diffs'), 'wb')
@@ -213,7 +213,7 @@ class WriteDiff:
             self.fend = struct.unpack('<I', cdagdb.get(handle, txn=txn))[0]
             #self.fend = struct.unpack('<I', cdagdb.get('diffend', txn=txn))[0]
             self.hfile = open(fname, 'r+b')
-        except (db.DBNotFoundError, TypeError):
+        except (db.DBNotFoundError, TypeError, struct.error):
             self.fend = 0
             self.hfile = open(fname, 'wb')
         self.hfile.seek(self.fend)
@@ -570,7 +570,7 @@ def _update_helper_content(co, handle, point, precursors, hinfo, txn):
     elif hinfo.has_key('delete'):
         oinfo['delete'] = 1
     return oinfo
- 
+
 def _update_helper_name(co, handle, point, precursors, hinfo, txn):
     oinfo = {}
     if hinfo.has_key('name'):
@@ -868,7 +868,7 @@ def _mini_dag_refcount(co, handle, point, txn, cache=None, info_cache=None):
             cache[point]['refcount'] += 1
             continue
         cache[point] = {'refcount': 1}
-        
+
         pinfo = bdecode(co.contents.dagdb.get(handle + point, txn=txn))
         info_cache[point] = pinfo
 

@@ -1,6 +1,7 @@
 # Written by Bram Cohen
 # see LICENSE.txt for license information
 
+import os
 from select import select, error
 from time import sleep
 from types import IntType
@@ -9,11 +10,13 @@ POLLIN = 1
 POLLOUT = 2
 POLLERR = 8
 POLLHUP = 16
+POLLERR = 32
 
 class poll:
     def __init__(self):
         self.rlist = []
         self.wlist = []
+        self.elist = []
         
     def register(self, f, t):
         if type(f) != IntType:
@@ -26,25 +29,36 @@ class poll:
             insert(self.wlist, f)
         else:
             remove(self.wlist, f)
+        if (t & POLLERR) != 0:
+            insert(self.elist, f)
+        else:
+            remove(self.elist, f)
         
     def unregister(self, f):
         if type(f) != IntType:
             f = f.fileno()
         remove(self.rlist, f)
         remove(self.wlist, f)
+        remove(self.elist, f)
 
     def poll(self, timeout = None):
-        if self.rlist != [] or self.wlist != []:
-            r, w, e = select(self.rlist, self.wlist, [], timeout)
+        if self.rlist != [] or self.wlist != [] or self.elist != []:
+            r, w, e = select(self.rlist, self.wlist, self.elist, timeout)
         else:
             sleep(timeout)
             return []
-        result = []
+        result = {}
         for s in r:
-            result.append((s, POLLIN))
+            result[s] = POLLIN
         for s in w:
-            result.append((s, POLLOUT))
-        return result
+            res = result.get(s, 0)
+            res |= POLLOUT
+            result[s] = res
+        for s in e:
+            res = result.get(s, 0)
+            res |= POLLERR
+            result[s] = res
+        return result.items()
 
 def remove(list, item):
     i = bisect(list, item)

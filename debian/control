@@ -4,13 +4,12 @@ Priority: optional
 Maintainer: Michael Janssen <jamuraa@debian.org>
 Uploaders: Chad Walstrom <chewie@debian.org>
 Build-Depends: cdbs (>= 0.4.43), python-all-dev (>= 2.3.5-11), debhelper (>= 5.0.37.2), python-support (>= 0.3)
-Standards-Version: 3.7.2.0
-
+Standards-Version: 3.7.3.0
 
 Package: codeville
 Architecture: all
 Depends: ${python:Depends}, ${misc:Depends}, ${shlibs:Depends}
-Recommends: python-psyco
+Recommends: python-psyco [i386]
 Provides: ${python:Provides}
 XB-Python-Version: ${python:Versions}
 Description: a distributed version control system
@@ -18,5 +17,4 @@ Description: a distributed version control system
  began with a novel idea for a merge algorithm and has grown from
  there. It is designed to be easy to use and scale from small personal
  projects to very large distributed ones.
- .
- Homepage: http://www.codeville.org/
+Homepage: http://www.codeville.org/

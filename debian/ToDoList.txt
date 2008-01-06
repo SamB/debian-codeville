@@ -1,6 +1,5 @@
-
-   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
-   View [5]Search [6]Index [7]Glossary [8]Help
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print View
+   [5]Search [6]Index [7]Glossary [8]Help
 
    [9]Codeville Wiki
    Search: ____________________ Titles Text
@@ -11,7 +10,7 @@
      * [13]FindPage
      * [14]HelpContents
      * [15]ToDoList
-     _________________________________________________________________
+     __________________________________________________________________
 
      * Immutable Page
      * [16]Show Changes
@@ -25,8 +24,8 @@ The Magic TODO list
 
 larger features
 
-     * merge-through-conflict code (necessary in rare cases for revert
-       and resurrection)
+     * merge-through-conflict code (necessary in rare cases for revert and
+       resurrection)
      * revert (for name operations, this already works for file contents)
      * resurrecting deleted files
      * access control lists on repository paths in the server
@@ -56,8 +55,8 @@ smaller stuff
        something better. Ask on the mailing list for more details.
      * Better parallelize the delta fetching and history replaying by
        moving one of the 2 into a separate thread.
-     * Documentation. Some [19]HowTo guides would be especially useful
-       for things like history browsing.
+     * Documentation. Some [19]HowTo guides would be especially useful for
+       things like history browsing.
      * Fix the file ignore pattern stuff. Should probably work more like
        CVS.
      * Remember which files had conflicts after an update and have the
@@ -65,7 +64,7 @@ smaller stuff
      * Force users to resolve name conflicts before allowing relevent
        files to be committed.
 
-   last edited 2006-02-24 01:50:46 by RossCohen
+   last edited 2007-09-03 23:29:17 by RossCohen
 
      * Immutable Page
      * [20]Show Changes

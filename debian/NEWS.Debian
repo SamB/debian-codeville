@@ -1,8 +1,8 @@
 codeville (0.1.16-1) unstable; urgency=low
 
-  * New upstream version and some documentation changes for the Debian
-    package.  Documents are now pulled from the Codeville website and
-    wiki using the debian/rules target `doc-update'.
+  New upstream version and some documentation changes for the Debian
+  package.  Documents are now pulled from the Codeville website and
+  wiki using the debian/rules target `doc-update'.
 
  -- Chad Walstrom <chewie@debian.org>  Tue, 28 Feb 2006 11:12:56 -0600
 
@@ -44,4 +44,3 @@ codeville (0.1.11-0) experimental; urgency=low
   Read the upstream changelog for more details.
 
  -- Chad Walstrom <chewie@debian.org>  Fri,  6 May 2005 10:26:50 -0500
-

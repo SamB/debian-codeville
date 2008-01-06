@@ -1,6 +1,5 @@
-
-   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
-   View [5]Search [6]Index [7]Glossary [8]Help
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print View
+   [5]Search [6]Index [7]Glossary [8]Help
 
    [9]Codeville Wiki
    Search: ____________________ Titles Text
@@ -11,7 +10,7 @@
      * [13]FindPage
      * [14]HelpContents
      * [15]QuickStartGuide
-     _________________________________________________________________
+     __________________________________________________________________
 
      * Immutable Page
      * [16]Show Changes
@@ -20,6 +19,10 @@
        [Show Raw Text......] Do
 
 [18]QuickStartGuide
+
+   This document describes how to use a client and a server for the first
+   time after it has been installed. Server instructions are given after
+   the client instructions.
 
    All client instructions below assume you are within your workspace
    directory, not including the .cdv dir.
@@ -52,8 +55,7 @@ cdv update
 
 Making changes
 
-   Codeville automatically detects when you have edited files in a
-   client.
+   Codeville automatically detects when you have edited files in a client.
 
    Rename or move files or directories:
 cdv rename <source> <dest>
@@ -65,9 +67,9 @@ cdv remove <files>
 cdv diff [-r <changeset1> [-r <changeset2>]]
 
    One -r flag will specify the change to diff from, a second the change
-   to diff to. By default, the first change is the most recent change
-   from the default repository (or the repository specied by -R). The
-   second defaults to local, which is the current state of the workspace.
+   to diff to. By default, the first change is the most recent change from
+   the default repository (or the repository specied by -R). The second
+   defaults to local, which is the current state of the workspace.
 
    Show a more compact list of changes:
 cdv status
@@ -112,8 +114,7 @@ Resolving conflicts
    Naming conflicts will result in mangled filenames. Look for files and
    directories which end with .nameconflict.local, .orphaned, .loop, etc.
    Sometimes there will be a file with a ".info" extension which contains
-   where the file exists according to the update which caused the
-   problem.
+   where the file exists according to the update which caused the problem.
 
 Other stuff
 
@@ -131,8 +132,8 @@ Starting a server
    and run:
 cdvserver -i -f .
 
-   You will also need to create at least 1 account. Do this by running
-   the cdvpasswd program in the server directory, for example:
+   You will also need to create at least 1 account. Do this by running the
+   cdvpasswd program in the server directory, for example:
 cdvpasswd -f passwd add <username>
 
    The special username "anonymous" is only allowed to do read operations
@@ -141,14 +142,89 @@ cdvpasswd -f passwd add <username>
    Run cdvserver:
 cdvserver -n -d -f <server directory>
 
-   You now have a running server. Running without -d will cause the
-   server to fork off into the background and generally act more
-   server-like. See the server reference for more details.
+   You now have a running server. Running without -d will cause the server
+   to fork off into the background and generally act more server-like. See
+   the server reference for more details.
+
+Ubuntu Init Script
+
+   Place the following in /etc/init.d/cdv and change the permissions to be
+   world-executable using chmod 755 /etc/init.d/cdv -- note that this was
+   based on the OpenBSD Secure Shell init script /etc/init.d/ssh.
+#! /bin/bash --
+set -e
+
+# /etc/init.d/cdv: start and stop the Codeville server
+
+oPATH="$PATH"
+
+PATH=/usr/X11R6/bin:/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+cdvserver="$(type -p cdvserver 2>/dev/null)"
+
+PATH="$oPATH"
+
+test :"$cdvserver" = :"" && exit 0
+
+test -x "$cdvserver" || exit 0
+( "$cdvserver" -h 2>&1 | grep -q Valid ) 2>/dev/null || exit 0
+
+if test -f /etc/default/cdv; then
+    . /etc/default/cdv
+fi
+
+. /lib/lsb/init-functions
+
+check_for_no_start() {
+    # forget it if we're trying to start, and /etc/cdv/cdvserver_not_to_be_run e
+xists
+    if [ -e /etc/cdv/cdvserver_not_to_be_run ]; then
+        log_end_msg 0
+        log_warning_msg "Codeville server not in use (/etc/cdv/cdvserver_not_to_
+be_run)"
+        exit 0
+    fi
+}
+
+export PATH="${PATH:+$PATH:}/usr/sbin:/sbin"
+
+case "$1" in
+  start)
+        log_begin_msg "Starting Codeville server..."
+        check_for_no_start
+        start-stop-daemon --start --quiet --pidfile /var/run/cdvserver.pid --exe
+c "$cdvserver" -- $CDVSERVER_OPTS || log_end_msg 1
+        log_end_msg 0
+        ;;
+  stop)
+        log_begin_msg "Stopping Codeville server..."
+        start-stop-daemon --stop --quiet --oknodo --pidfile /var/run/cdvserver.p
+id || log_end_msg 1
+        log_end_msg 0
+        ;;
+
+  restart)
+        log_begin_msg "Restarting Codeville server..."
+        start-stop-daemon --stop --quiet --oknodo --retry 30 --pidfile /var/run/
+cdvserver.pid
+        check_for_no_start
+        start-stop-daemon --start --quiet --pidfile /var/run/cdvserver.pid --exe
+c "$cdvserver" -- $CDVSERVER_OPTS || log_end_msg 1
+        log_end_msg 0
+        ;;
+
+  *)
+        log_success_msg "Usage: /etc/init.d/cdv {start|stop|restart}"
+        exit 1
+esac
+
+exit 0
 
 Miscellaneous notes
 
-   Performance should be reasonable, there are still more optimizations
-   to be done. For now, you will get better performance by updating after
+   Performance should be reasonable, there are still more optimizations to
+   be done. For now, you will get better performance by updating after
    each commit.
 
    All files are assumed to be text. That is, Codeville will attempt to
@@ -158,7 +234,7 @@ Miscellaneous notes
    At this point the repository format should be stable enough that there
    will always be an upgrade path for the servers.
 
-   last edited 2005-10-06 23:46:50 by RossCohen
+   last edited 2007-09-03 23:30:41 by RossCohen
 
      * Immutable Page
      * [19]Show Changes

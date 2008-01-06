@@ -1,6 +1,5 @@
-
-   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print
-   View [5]Search [6]Index [7]Glossary [8]Help
+   #[1]Codeville Wiki Recent Changes [2]Start [3]Wiki Markup [4]Print View
+   [5]Search [6]Index [7]Glossary [8]Help
 
    [9]Codeville Wiki
    Search: ____________________ Titles Text
@@ -11,7 +10,7 @@
      * [13]FindPage
      * [14]HelpContents
      * [15]ServerReference
-     _________________________________________________________________
+     __________________________________________________________________
 
      * Immutable Page
      * [16]Show Changes
@@ -22,6 +21,8 @@
 [18]ServerReference
 
 Running a Server
+
+     * cdvserver
 
 Unix and OS X
 
@@ -60,8 +61,8 @@ General Notes
 
    By default, the server will look for a config file in
    /etc/cdvserver.conf. The distributed version includes the defaults for
-   the various options commented out. Command line options take
-   precedence over the config file.
+   the various options commented out. Command line options take precedence
+   over the config file.
 
 Windows
 
@@ -73,13 +74,13 @@ Config File
 
    The [control] section of the config file should be self-explanatory.
    Key/value pairs in [post-commit] allow you to execute scripts in
-   response to checkins. Keys are regular expressions, matched against
-   the repository name. Values are scripts into which some XML describing
-   the checkin will be sent as stdin. The XML is the same as the output
-   of describe with the -x option, only there is also a <repository> tag
-   in the server generated version.
+   response to checkins. Keys are regular expressions, matched against the
+   repository name. Values are scripts into which some XML describing the
+   checkin will be sent as stdin. The XML is the same as the output of
+   describe with the -x option, only there is also a <repository> tag in
+   the server generated version.
 
-   last edited 2006-02-24 01:03:09 by dsl081-051-135
+   last edited 2007-09-03 23:32:52 by RossCohen
 
      * Immutable Page
      * [19]Show Changes

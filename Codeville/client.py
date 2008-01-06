@@ -40,6 +40,7 @@ import re
 from sets import Set
 import sha
 import shlex
+import shutil
 import stat
 from sys import maxint, stdin, stdout, version_info, platform, stderr
 import tempfile
@@ -551,6 +552,10 @@ def _update_helper(co, uinfo, named, modified, added, deleted, txn):
         for chandle in children_count(co, handle, txn):
             if deletes.has_key(chandle):
                 continue
+
+            if chandle in names:
+                continue
+
             #file = _handle_to_filename(co, chandle, {}, txn)
             #print 'parent of ' + file + ' was deleted, orphaning'
             cinfo = handle_name(co, chandle, txn)
@@ -744,13 +749,15 @@ def update(co, remote, merge=True):
 
     # XXX: need to do something about making updates atomic
     txn = co.txn_begin()
+
+    create_dirs = []
     for handle in newfiles.keys():
         lfile = _handle_to_filename(co, handle, names, None)
 
         #staticinfo = bdecode(co.staticdb.get(handle, txn=txn))
         staticinfo = db_get(co, co.staticdb, handle, txn)
         if staticinfo['type'] == 'dir':
-            mdir(path.join(local, lfile))
+            create_dirs.append(lfile)
         else:
             co.filenamesdb.put(lfile, handle, txn=txn)
 
@@ -767,10 +774,8 @@ def update(co, remote, merge=True):
             renames.insert(0, handle)
             continue
         spath = _handle_to_filename(co, handle, names, None)
-        safename = '.safename.' + str(randrange(0, maxint, 1))
-        names[handle]['name'] = names[handle]['name'] + safename
-        info = handle_name(co, handle, None)
-        names[handle]['parent'] = info['parent']
+        names[handle]['name']   = binascii.hexlify(handle)
+        names[handle]['parent'] = roothandle
         dpath = _handle_to_filename(co, handle, names, None)
         os.rename(path.join(local, spath), path.join(local, dpath))
 
@@ -805,6 +810,10 @@ def update(co, remote, merge=True):
         except OSError:
             print 'warning - %s could not be deleted because it is not empty' % \
                   (lfile,)
+
+    create_dirs.sort()
+    for lfile in create_dirs:
+        mdir(path.join(local, lfile))
 
     for handle in names.keys():
         spath = _handle_to_filename(co, handle, names, None)
@@ -856,7 +865,7 @@ def cli_construct(co, spoint):
         if htype == 'file':
             cinfo = handle_contents_at_point(co, handle, point, None)
             temppath = path.join(co.temppath, binascii.hexlify(handle))
-            fd = open(temppath, 'w')
+            fd = open(temppath, 'wb')
             fd.write('\n'.join(cinfo['lines']))
             fd.close()
 
@@ -904,7 +913,8 @@ def cli_construct(co, spoint):
         elif htype == 'file':
             temppath = path.join(co.temppath, binascii.hexlify(handle))
             preserving_rename(temppath, destpath)
-            co.modtimesdb.put(handle, bencode(path.getmtime(destpath)), txn=txn)
+            mtime = int(path.getmtime(destpath))
+            co.modtimesdb.put(handle, bencode(mtime), txn=txn)
             co.filenamesdb.put(hfile, handle, txn=txn)
 
     co.linforepo.put('heads', bencode([point]), txn=txn)
@@ -997,6 +1007,16 @@ def cli_print_mini_dag(co, file, uheads, by_id):
     pretty_print_dag(co, handle, heads)
     return 0
 
+def cli_handle_to_filename(co, head, handles):
+    handle = binascii.unhexlify(handles[0])
+    if head == 'local':
+        name = handle_to_filename(co, handle)
+    else:
+        point = long_id(co, head)
+        name = fullpath_at_point(co, handle, point)
+    print name
+    return 0
+
 def populate_local_repos(co, ltxn):
     if co.linforepo.has_key('heads', ltxn):
         return
@@ -1059,7 +1079,22 @@ class GarbledCommitError(StandardError): pass
 def _commit_helper(co, commit_files):
     output = []
 
-    output.extend(['', '### Enter comment above', '### Files'])
+    # check for a saved comment
+    comment_file = path.join(co.conf_path, '.comment')
+    if path.exists(comment_file):
+        comment_fd = file(comment_file, 'r')
+        comment = comment_fd.read()
+        comment_fd.close()
+
+        if comment[-1] == '\n':
+            comment = comment[:-1]
+
+        output.append(comment)
+
+    else:
+        output.append('')
+
+    output.extend(['### Enter comment above', '### Files'])
 
     files, name_map = [], {}
     for handle, info in commit_files:
@@ -1231,6 +1266,16 @@ def commit(co, remote, comment, tstamp=None, backup=False, files=list()):
         print 'commit failed: ' + str(msg)
         return 1
 
+    if comment is not None:
+        # save comment in case commit fails
+        tmp_fd, tmp_file = tempfile.mkstemp(dir=co.conf_path)
+        tmp_fd = os.fdopen(tmp_fd, 'w')
+        tmp_fd.write(comment)
+        tmp_fd.close()
+
+        comment_file = path.join(co.conf_path, '.comment')
+        shutil.move(tmp_file, comment_file)
+
     # create and verify the changeset
     ltxn = co.txn_begin()
 
@@ -1248,7 +1293,7 @@ def commit(co, remote, comment, tstamp=None, backup=False, files=list()):
             sync_history(co, point, ltxn)
         except HistoryError, msg:
             print 'commit failed: ' + str(msg)
-            print 'THIS IS REALLY BAD!!!'
+            print 'This is likely the result of a partial commit with missing dependencies. Alternatively, it could be a bug in Codeville. If you believe this to be the case, please report this to the development list.'
             co.txn_abort(ltxn)
             return 1
     else:
@@ -1291,6 +1336,10 @@ def commit(co, remote, comment, tstamp=None, backup=False, files=list()):
         co.linforepo.put(tuple_to_server(remote), point, txn=ltxn)
 
     co.txn_commit(ltxn)
+
+    # remove saved comment file
+    os.remove(comment_file)
+
     print 'commit succeeded'
     return 0
 
@@ -1671,23 +1720,29 @@ def diff(co, revs, files, print_new):
         else:
             branch.append([revs[i]])
 
+    # assemble a list of all files with changes
+    named, modified, added, deleted = \
+           handles_in_branch(co, branch[0], branch[1], None)
+    names2, modified2, added2, deleted2 = \
+            handles_in_branch(co, branch[1], branch[0], None)
+    all_handles = dmerge(modified, modified2)
+
+    # include local edits if diffing against the local tree
+    if revs[0] == 'local' or revs[1] == 'local':
+        all_handles = dmerge(all_handles, editsdb.keys())
+
+    handles = []
     if files == []:
-        named, modified, added, deleted = \
-               handles_in_branch(co, branch[0], branch[1], None)
-        names2, modified2, added2, deleted2 = \
-                handles_in_branch(co, branch[1], branch[0], None)
-        handles = dmerge(modified, modified2)
-
         if print_new:
-            handles = damerge(handles, added, deleted, added2, deleted2)
+            handles = damerge(all_handles, added, deleted, added2, deleted2)
 
-        if revs[0] == 'local' or revs[1] == 'local':
-            handles = dmerge(handles, editsdb.keys())
+        else:
+            handles = all_handles
 
     else:
-        handles = []
+        dall_handles = Set(all_handles)
         for handle, expanded in Glob(co, files).db_walk():
-            if expanded and not editsdb.has_key(handle):
+            if expanded and not handle in dall_handles:
                 continue
             handles.append(handle)
 
@@ -2069,7 +2124,8 @@ def revert(co, files, unmod_flag):
                 h.close()
                 if '\n'.join(ls) == contents:
                     unset_edit(co, handle, ['hash'], txn)
-                    co.modtimesdb.put(handle, bencode(path.getmtime(filepath)), txn=txn)
+                    mtime = int(path.getmtime(filepath))
+                    co.modtimesdb.put(handle, bencode(mtime), txn=txn)
                     print 'reverting: %s' % (filename,)
                 continue
 
@@ -2088,7 +2144,8 @@ def revert(co, files, unmod_flag):
         temppath = path.join(co.temppath, binascii.hexlify(handle))
         destpath = path.join(co.local, filename)
         preserving_rename(temppath, destpath)
-        co.modtimesdb.put(handle, bencode(path.getmtime(destpath)), txn=txn)
+        mtime = int(path.getmtime(destpath))
+        co.modtimesdb.put(handle, bencode(mtime), txn=txn)
 
     co.txn_commit(txn)
     print 'revert succeeded'

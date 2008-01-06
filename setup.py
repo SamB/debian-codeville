@@ -37,7 +37,7 @@ setup(
     name = "Codeville",
     version = Codeville.version,
     author = "Ross Cohen",
-    author_email = "<rcohen@snurgle.org>",
+    author_email = "rcohen@snurgle.org",
     url = "http://www.codeville.org/",
     license = "BSD",
 
