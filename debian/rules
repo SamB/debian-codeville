@@ -37,7 +37,7 @@ doc-update-stamp:
 # codeville tries to install documentation in the Right Place(TM), but
 # gets it wrong for Debian.  Already included the LICENSE.txt in the
 # copyright file.
-common-install-indep::
+install/codeville::
 	mkdir -p debian/codeville/etc
 	mv debian/codeville/usr/share/doc/Codeville-$(UPSTREAM_VERSION)/cdvserver.conf.sample \
 		debian/codeville/etc/cdvserver.conf

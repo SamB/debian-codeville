@@ -1,3 +1,15 @@
+codeville (0.8.0-1.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * debian/rules: moved rules to clean doc directory from 
+    common-install-indep target to install/codeville target. 
+    (Closes: #526573, #527828)
+  * debian/compat: updated to 5.
+  * debian/control: bump Standards-Version to 3.8.3
+  * debian/control: added build-depends-indep on lynx. (Closes: #528738)
+
+ -- Francesco Namuri <francesco@namuri.it>  Thu, 27 Aug 2009 17:54:26 +0200
+
 codeville (0.8.0-1) unstable; urgency=low
 
   * New upstream release. Closes: #457221
