@@ -9,7 +9,7 @@ Standards-Version: 3.8.3
 Package: codeville
 Architecture: all
 Depends: ${python:Depends}, ${misc:Depends}, ${shlibs:Depends}
-Recommends: python-psyco [i386]
+Recommends: python-psyco
 Provides: ${python:Provides}
 XB-Python-Version: ${python:Versions}
 Description: a distributed version control system
