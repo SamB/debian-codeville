@@ -1,0 +1,11 @@
+can't find file to patch at input line 3
+Perhaps you used the wrong -p or --strip option?
+The text leading up to this was:
+--------------------------
+|--- Codeville/mergelcs.py.orig	2005-07-14 10:00:03.207184679 -0500
+|+++ Codeville/mergelcs.py	2005-07-14 10:00:13.804793263 -0500
+--------------------------
+File to patch: 
+Skip this patch? [y] 
+Skipping patch.
+1 out of 1 hunk ignored

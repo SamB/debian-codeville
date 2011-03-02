@@ -1,3 +1,15 @@
+codeville (0.8.0-2) unstable; urgency=low
+
+  * Ack NMUs - Thanks Frencesco and Nico!
+  * Remove Chad Walstrom from Uploaders list (retired).
+    Closes: #572671
+  * Remove Homepage because the link is now broken.
+  * Update init script for $remote_fs since /usr might be remote.
+  * Bump Standards-Version to 3.9.1 (no changes)
+  * Use hashlib instead of sha (depreciated)
+
+ -- Michael Janssen <jamuraa@debian.org>  Wed, 02 Mar 2011 08:54:18 -0600
+
 codeville (0.8.0-1.2) unstable; urgency=low
 
   * Non-maintainer upload.

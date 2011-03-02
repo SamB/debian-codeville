@@ -4,7 +4,7 @@
 #logfile=/var/log/cdvserver.log
 #backup=False
 #port=6601
-#user=cdv
+user=cdv
 
 [post-commit]
 # keys are regular expression matching repository names

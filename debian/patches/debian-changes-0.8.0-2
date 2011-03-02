@@ -1,0 +1,391 @@
+Description: Upstream changes introduced in version 0.8.0-2
+ This patch has been created by dpkg-source during the package build.
+ Here's the last changelog entry, hopefully it gives details on why
+ those changes were made:
+ .
+ codeville (0.8.0-2) unstable; urgency=low
+ .
+   * Ack NMUs - Thanks Frencesco and Nico!
+   * Remove Chad Walstrom from Uploaders list (retired).
+     Closes: #572671
+   * Remove Homepage because the link is now broken.
+   * Update init script for $remote_fs since /usr might be remote.
+   * Bump Standards-Version to 3.9.1 (no changes)
+   * Use hashlib instead of sha (depreciated)
+ .
+ The person named in the Author field signed this changelog entry.
+Author: Michael Janssen <jamuraa@debian.org>
+Bug-Debian: http://bugs.debian.org/572671
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: <vendor|upstream|other>, <url of original patch>
+Bug: <url in upstream bugtracker>
+Bug-Debian: http://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: <no|not-needed|url proving that it has been forwarded>
+Reviewed-By: <name and email of someone who approved the patch>
+Last-Update: <YYYY-MM-DD>
+
+--- codeville-0.8.0.orig/cdvserver.conf.sample
++++ codeville-0.8.0/cdvserver.conf.sample
+@@ -4,7 +4,7 @@
+ #logfile=/var/log/cdvserver.log
+ #backup=False
+ #port=6601
+-user=cdv
++#user=cdv
+ 
+ [post-commit]
+ # keys are regular expression matching repository names
+--- codeville-0.8.0.orig/Codeville/crypt.py
++++ codeville-0.8.0/Codeville/crypt.py
+@@ -2,14 +2,14 @@
+ # see LICENSE.txt for license information
+ 
+ from entropy import string_to_long, long_to_string
+-import sha
++import hashlib
+ 
+ def crypt(text, key, counter=0L):
+     keylen, length = len(key), len(text)
+     pos, cyphertext = 0, []
+     while pos < length:
+         scounter = long_to_string(counter, keylen)
+-        hash = sha.new("ctr mode crypt" + key + scounter).digest()
++        hash = hashlib.sha1("ctr mode crypt" + key + scounter).digest()
+         for i in xrange(min(length-pos, len(hash))):
+             cyphertext.append(chr(ord(hash[i]) ^ ord(text[pos])))
+             pos += 1
+--- codeville-0.8.0.orig/Codeville/agent.py
++++ codeville-0.8.0/Codeville/agent.py
+@@ -9,7 +9,7 @@ try:
+     import select
+ except ImportError:
+     import selectpoll as select
+-import sha
++import hashlib
+ import socket
+ import SRP
+ from cStringIO import StringIO
+@@ -108,12 +108,12 @@ class Agent:
+         type = msg['type']
+ 
+         if   type == 'CDV_AGENT_ADD_PASSWORD':
+-            id = sha.new('password' + msg['password']).digest()
++            id = hashlib.sha1('password' + msg['password']).digest()
+             self.identities[id] = msg['password']
+             self._write_answer(sock, bencode({'id': id}))
+ 
+         elif type == 'CDV_AGENT_ADD_SECRET':
+-            id = sha.new('public hash check' + msg['secret']).digest()
++            id = hashlib.sha1('public hash check' + msg['secret']).digest()
+             self.identities[id] = msg['secret']
+             self._write_answer(sock, bencode({'id': id}))
+ 
+@@ -123,7 +123,7 @@ class Agent:
+                 return
+             secret = crypt(msg['secret'], self.identities[msg['id']])[0]
+ 
+-            id = sha.new('public hash check' + secret).digest()
++            id = hashlib.sha1('public hash check' + secret).digest()
+             if id != msg['secret_id']:
+                 self._write_error(sock, 'id does not match')
+                 return
+@@ -156,7 +156,7 @@ class Agent:
+ 
+             base = 'session key' + self.identities[msg['id']] + \
+                    msg['salt1'] + msg['salt2']
+-            key = sha.new(base).digest()
++            key = hashlib.sha1(base).digest()
+             answer = {'key': key}
+             self._write_answer(sock, bencode(answer))
+ 
+--- codeville-0.8.0.orig/Codeville/lcsmatch.py
++++ codeville-0.8.0/Codeville/lcsmatch.py
+@@ -1,4 +1,3 @@
+-#!/usr/bin/env python
+ 
+ # Written by Bram Cohen and Uoti Urpala
+ 
+--- codeville-0.8.0.orig/Codeville/diff.py
++++ codeville-0.8.0/Codeville/diff.py
+@@ -1,5 +1,3 @@
+-#!/usr/bin/python
+-
+ # Written by Ross Cohen
+ # see LICENSE.txt for license information
+ 
+--- codeville-0.8.0.orig/Codeville/client_helpers.py
++++ codeville-0.8.0/Codeville/client_helpers.py
+@@ -16,7 +16,7 @@ from merge import find_resolution
+ import os
+ from os import path
+ from path import breakup
+-import sha
++import hashlib
+ import stat
+ from time import time
+ import zlib
+@@ -27,14 +27,14 @@ class CommitError(Exception):
+ def new_handle(co, txn):
+     """Create a temporary handle for new files in the working copy"""
+     num = bdecode(co.linforepo.get('lasthandle', txn=txn)) + 1
+-    handle = sha.new(str(num)).digest()
++    handle = hashlib.sha1(str(num)).digest()
+     co.linforepo.put('lasthandle', bencode(num), txn=txn)
+     return handle
+ 
+ def create_handle(precursors, hinfo):
+     """Create a permanent identifier for use in a changeset description"""
+     binfo = bencode({'precursors': precursors, 'handle': hinfo})
+-    return sha.new(binfo).digest()
++    return hashlib.sha1(binfo).digest()
+ 
+ def handle_name(co, handle, txn):
+     """Returns a dict specifying name, parent and other info"""
+@@ -385,7 +385,7 @@ def gen_changeset(co, files, comment, re
+             return None
+         mtime = int(path.getmtime(lfile))
+         co.modtimesdb.put(handle, bencode(mtime), txn=txn)
+-        hinfo['hash'] = sha.new(diff).digest()
++        hinfo['hash'] = hashlib.sha1(diff).digest()
+         return zlib.compress(diff, 6)
+ 
+     precursors = bdecode(co.linforepo.get('heads'))
+@@ -556,7 +556,7 @@ def gen_changeset(co, files, comment, re
+ 
+     # put together the changeset and calculate the point
+     bchangeset = bencode(changeset)
+-    point = sha.new(bchangeset).digest()
++    point = hashlib.sha1(bchangeset).digest()
+ 
+     # write the file locations of the diffs to the db
+     for handle, index in indices.items():
+--- codeville-0.8.0.orig/Codeville/client.py
++++ codeville-0.8.0/Codeville/client.py
+@@ -38,7 +38,7 @@ from path import mdir, subpath, breakup,
+ from random import randrange
+ import re
+ from sets import Set
+-import sha
++import hashlib
+ import shlex
+ import shutil
+ import stat
+@@ -1022,7 +1022,7 @@ def populate_local_repos(co, ltxn):
+         return
+ 
+     root = bencode({'precursors': [], 'handles': {roothandle: {'add': {'type': 'dir'}, 'name': ''}}})
+-    head = sha.new(root).digest()
++    head = hashlib.sha1(root).digest()
+     assert head == rootnode
+     co.lcrepo.put(head, root, txn=ltxn)
+     co.linforepo.put('heads', bencode([head]), txn=ltxn)
+--- codeville-0.8.0.orig/Codeville/auth.py
++++ codeville-0.8.0/Codeville/auth.py
+@@ -7,7 +7,7 @@ from crypt import crypt
+ from errno import ECONNRESET
+ from getpass import getpass
+ from os import environ
+-import sha
++import hashlib
+ import socket
+ import SRP
+ from StringIO import StringIO
+@@ -79,7 +79,7 @@ class Auth:
+         # double check the decrypted secret against the known hash
+         # to make sure the user typed in the right password
+         secret = crypt(esecret, self.password)[0]
+-        if sha.new('public hash check' + secret).digest() != secret_hash:
++        if hashlib.sha1('public hash check' + secret).digest() != secret_hash:
+             raise AuthError, 'Bad password'
+ 
+         self.secret = secret
+@@ -89,7 +89,7 @@ class Auth:
+         self.secret = secret
+ 
+         # XXX: assert self.hash == hash
+-        #hash = sha.new('public hash check' + secret).digest()
++        #hash = hashlib.sha1('public hash check' + secret).digest()
+ 
+         if self.agent_sock is not None:
+             msg = {'id': self.hash, 'secret': secret}
+@@ -131,7 +131,7 @@ class Auth:
+ 
+         if   self.secret is not None:
+             base = 'session key' + self.secret + salt1 + salt2
+-            key = sha.new(base).digest()
++            key = hashlib.sha1(base).digest()
+ 
+         elif self.agent_sock is not None:
+             msg = {'id': self.hash, 'salt1': salt1, 'salt2': salt2}
+@@ -164,7 +164,7 @@ class Auth:
+         else:
+             self.password = getpass()
+ 
+-        self.pwid = sha.new('password' + self.password).digest()
++        self.pwid = hashlib.sha1('password' + self.password).digest()
+ 
+         if self.agent_sock is not None:
+             msg = {'password': self.password}
+--- codeville-0.8.0.orig/Codeville/server.py
++++ codeville-0.8.0/Codeville/server.py
+@@ -20,7 +20,7 @@ from passwd import Passwd
+ from random import randrange
+ from RawServer import RawServer
+ import re
+-import sha
++import hashlib
+ import SRP
+ from sys import version_info
+ from threading import Event
+@@ -213,7 +213,7 @@ class ServerHandler(ServerRepository):
+                 return
+             socket['user'] = msg['user']
+             if msg['op'] == 'get hash':
+-                self._send_msg(s, {'hash': sha.new('public hash check' + pw['secret']).digest()})
++                self._send_msg(s, {'hash': hashlib.sha1('public hash check' + pw['secret']).digest()})
+                 socket['state'] = 3
+             elif msg['op'] == 'secret auth':
+                 self._secret_auth(s)
+@@ -268,10 +268,10 @@ class ServerHandler(ServerRepository):
+                 return
+ 
+             base = 'session key' + pw['secret'] + socket['salt'] + msg['salt']
+-            key = sha.new(base).digest()
++            key = hashlib.sha1(base).digest()
+             socket['m_in'] = hmac.new(key, '', sha)
+             base = 'session key' + pw['secret'] + msg['salt'] + socket['salt']
+-            key = sha.new(base).digest()
++            key = hashlib.sha1(base).digest()
+             socket['m_out'] = hmac.new(key, '', sha)
+ 
+             if msg['auth'] != socket['m_out'].digest():
+@@ -425,7 +425,7 @@ class ServerHandler(ServerRepository):
+         lstate = self.socket[s][Response][rstate['ref']]
+         changeset = msg['changeset']
+         del msg['changeset']
+-        if sha.new(changeset).digest() != rstate['changenum']:
++        if hashlib.sha1(changeset).digest() != rstate['changenum']:
+             self._close(s)
+             return
+         write_changeset(self, rstate['changenum'], changeset, lstate['txn'])
+@@ -605,7 +605,7 @@ class ServerHandler(ServerRepository):
+                                  'user': self.socket[s][User],
+                                  'time': int(time()),
+                                  'handles': {}})
+-            new_head = request['new head'] = sha.new(changeset).digest()
++            new_head = request['new head'] = hashlib.sha1(changeset).digest()
+             write_changeset(self, new_head, changeset, txn)
+         else:
+             new_head = request['head']
+--- codeville-0.8.0.orig/Codeville/upgrade.py
++++ codeville-0.8.0/Codeville/upgrade.py
+@@ -11,7 +11,7 @@ from Codeville.history import HistoryErr
+ from Codeville.old.history import handle_contents_at_point as old_handle_contents_at_point
+ from Codeville.old.history import handle_name_at_point as old_handle_name_at_point
+ import copy
+-import sha
++import hashlib
+ from sys import stdout
+ import zlib
+ 
+@@ -191,7 +191,7 @@ def convert_cset(UR, point):
+ 
+             if dinfo is not None:
+                 diff = bencode(dinfo)
+-                new_hinfo['hash'] = sha.new(diff).digest()
++                new_hinfo['hash'] = hashlib.sha1(diff).digest()
+ 
+                 # if this used to be a clean merge, we have to replace it
+                 if not old_cset.has_key(old_handle) or not old_cset[old_handle].has_key('hash'):
+@@ -237,7 +237,7 @@ def convert_cset(UR, point):
+         forced_cset['comment'] = '--- change created by cdvupgrade ---\n'
+ 
+         bforced_cset = bencode(forced_cset)
+-        forced_point = sha.new(bforced_cset).digest()
++        forced_point = hashlib.sha1(bforced_cset).digest()
+         UR.new_repo.lcrepo.put(forced_point, bforced_cset, txn=UR.txn)
+ 
+         index_point = forced_point
+@@ -249,7 +249,7 @@ def convert_cset(UR, point):
+ 
+     # calculate the new point name and write it out
+     bnew_cset = bencode(new_cset)
+-    new_point = sha.new(bnew_cset).digest()
++    new_point = hashlib.sha1(bnew_cset).digest()
+     UR.new_repo.lcrepo.put(new_point, bnew_cset, txn=UR.txn)
+ 
+     UR.point_map[point] = new_point
+--- codeville-0.8.0.orig/Codeville/history.py
++++ codeville-0.8.0/Codeville/history.py
+@@ -7,7 +7,7 @@ from db import db
+ from DFS import DFS
+ from merge import MergeError, replay
+ from os import path
+-from sha import sha
++from hashlib import sha1
+ import struct
+ from time import localtime, strftime
+ from xml.sax import saxutils
+@@ -406,7 +406,7 @@ def _verify_manifest(co, handle, point,
+ 
+ def validate_handle(handle, precursors, hinfo):
+     encinfo = bencode({'precursors': precursors, 'handle': hinfo})
+-    if sha(encinfo).digest() != handle:
++    if sha1(encinfo).digest() != handle:
+         raise HistoryError, 'bad identifier'
+ 
+ def pretty_print_big_dag(co, heads):
+--- codeville-0.8.0.orig/Codeville/mergelcs.py
++++ codeville-0.8.0/Codeville/mergelcs.py
+@@ -1,5 +1,3 @@
+-#!/usr/bin/python
+-
+ # Written by Uoti Urpala
+ 
+ 
+--- codeville-0.8.0.orig/Codeville/client_net.py
++++ codeville-0.8.0/Codeville/client_net.py
+@@ -18,7 +18,7 @@ from merge import find_conflict_multiple
+ from network import Request, Response, NetworkHandler, NetworkError
+ from os import path
+ from RawServer import RawServer
+-import sha
++import hashlib
+ import SRP
+ from threading import Event
+ import zlib
+@@ -186,7 +186,7 @@ class ClientHandler:
+ 
+     def _response_get_change(self, s, mid, msg, rstate):
+         lstate = self.socket[s][Request][rstate['ref']]
+-        if sha.new(msg['changeset']).digest() != rstate['changenum']:
++        if hashlib.sha1(msg['changeset']).digest() != rstate['changenum']:
+             raise ServerError, 'bad changeset'
+ 
+         # write it out, decode and eject from memory
+--- codeville-0.8.0.orig/Codeville/SRP.py
++++ codeville-0.8.0/Codeville/SRP.py
+@@ -9,7 +9,7 @@ distribution at http://srp.stanford.edu/
+ 
+ from entropy import random_long, random_string, string_to_long, long_to_string
+ import hmac
+-import sha
++import hashlib
+ 
+ # Some constants defining the sizes of various entities.
+ 
+@@ -35,7 +35,7 @@ def hash(s):
+     if type(s) != type(''):
+ 	s = long_to_string(s)
+ 
+-    return sha.new(s).digest()
++    return hashlib.sha1(s).digest()
+ 
+ def private_key(u, s, p):
+     """Given the username, salt, and cleartext password, return the private

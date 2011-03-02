@@ -1,0 +1,11 @@
+can't find file to patch at input line 3
+Perhaps you used the wrong -p or --strip option?
+The text leading up to this was:
+--------------------------
+|--- Codeville/diff.py.orig	2005-05-02 16:36:47.659432203 -0500
+|+++ Codeville/diff.py	2005-05-02 16:36:53.518665260 -0500
+--------------------------
+File to patch: 
+Skip this patch? [y] 
+Skipping patch.
+1 out of 1 hunk ignored

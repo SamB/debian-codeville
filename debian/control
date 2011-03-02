@@ -2,9 +2,8 @@ Source: codeville
 Section: devel
 Priority: optional
 Maintainer: Michael Janssen <jamuraa@debian.org>
-Uploaders: Chad Walstrom <chewie@debian.org>
-Build-Depends: cdbs (>= 0.4.43), python-all-dev (>= 2.3.5-11), debhelper (>= 5.0.37.2), python-support (>= 0.3)
-Standards-Version: 3.8.3
+Build-Depends: cdbs (>= 0.4.43), python (>= 2.3.5-11), debhelper (>= 5.0.37.2), python-support (>= 0.3)
+Standards-Version: 3.9.1
 
 Package: codeville
 Architecture: all
@@ -17,4 +16,3 @@ Description: a distributed version control system
  began with a novel idea for a merge algorithm and has grown from
  there. It is designed to be easy to use and scale from small personal
  projects to very large distributed ones.
-Homepage: http://www.codeville.org/
