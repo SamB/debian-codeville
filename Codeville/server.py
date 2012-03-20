@@ -3,12 +3,12 @@
 
 from bencode import bdecode, bencode
 import binascii
-from db import db, ChangeDBs
+from db import db, ChangeDBs, write_format_version, write_rebuild_version
 from crypt import crypt
 from entropy import random_string, string_to_long, long_to_string
 from history import sync_history, is_ancestor
 from history import roothandle, rootnode
-from history import read_diff, _write_diff, write_index, write_changeset
+from history import read_diff, WriteDiff, write_changeset
 from history import handles_in_branch, handle_contents_at_point
 from history import handle_name_at_point, handle_last_modified, HistoryError
 from history import clean_merge_point, dump_changeinfo
@@ -36,44 +36,59 @@ Flushed = 4
 class ServerError(Exception): pass
 
 class ServerRepository:
-    def _db_init(self, local):
-        self.txns = {}
-        self.dbenv = db.DBEnv()
-        self.dbenv.set_cachesize(0, 8 * 1024 * 1024)
-        self.dbenv.set_lg_bsize(1024 * 1024)
-        self.dbenv.set_get_returns_none(2)
-        self.dbenv.open(local, db.DB_CREATE|db.DB_INIT_MPOOL|db.DB_INIT_TXN|db.DB_PRIVATE|db.DB_RECOVER)
+    def _db_init(self, local, metadata_dir='.cdv', rw=True):
+        self.conf_path = path.join(local, metadata_dir)
+        if not path.exists(self.conf_path):
+            os.makedirs(self.conf_path)
 
-        ltxn = self._txn_begin()
+        self.txns = {}
+
+        cwd        = os.getcwd()
+        self.dbenv = None
+        flags      = db.DB_CREATE
+        ltxn       = None
+        if rw == True:
+            self.dbenv = db.DBEnv()
+            self.dbenv.set_cachesize(0, 8 * 1024 * 1024)
+            self.dbenv.set_lg_bsize(1024 * 1024)
+            self.dbenv.set_get_returns_none(2)
+            self.dbenv.open(self.conf_path, db.DB_CREATE|db.DB_INIT_MPOOL|db.DB_INIT_TXN|db.DB_PRIVATE|db.DB_RECOVER)
+
+            ltxn = self.txn_begin()
+
+        else:
+            os.chdir(self.conf_path)
+            flags = db.DB_RDONLY
+
         self.lcrepo = db.DB(dbEnv=self.dbenv)
-        self.lcrepo.open('changesets.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.lcrepo.open('changesets.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
         self.changesdb = db.DB(dbEnv=self.dbenv)
-        self.changesdb.open('changenums.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.changesdb.open('changenums.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
         self.branchmapdb = db.DB(dbEnv=self.dbenv)
-        self.branchmapdb.open('branchmap.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.branchmapdb.open('branchmap.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
         self.branchdb = db.DB(dbEnv=self.dbenv)
-        self.branchdb.open('branch.db', dbtype=db.DB_RECNO, flags=db.DB_CREATE, txn=ltxn)
+        self.branchdb.open('branch.db', dbtype=db.DB_RECNO, flags=flags, txn=ltxn)
         self.staticdb = db.DB(dbEnv=self.dbenv)
-        self.staticdb.open('static.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.staticdb.open('static.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
         self.linforepo = db.DB(dbEnv=self.dbenv)
-        self.linforepo.open('info.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.linforepo.open('info.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
         self.repolistdb = db.DB(dbEnv=self.dbenv)
-        self.repolistdb.open('repolist.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.repolistdb.open('repolist.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
 
         # open the mini-dags and their indices
-        self.contents = ChangeDBs(self.dbenv, 'content', ltxn)
-        self.names    = ChangeDBs(self.dbenv, 'name', ltxn)
+        self.contents = ChangeDBs(self.dbenv, 'content', flags, ltxn)
+        self.names    = ChangeDBs(self.dbenv, 'name', flags, ltxn)
 
         self.allnamesdb = db.DB(dbEnv=self.dbenv)
         self.allnamesdb.set_flags(db.DB_DUPSORT)
-        self.allnamesdb.open('allnames.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=ltxn)
+        self.allnamesdb.open('allnames.db', dbtype=db.DB_BTREE, flags=flags, txn=ltxn)
 
         self.name_cache = {}
         self.db_cache = {}
-        self.cpath = path.join(local, 'contents')
+        self.cpath = path.join(self.conf_path, 'contents')
 
         # populate the repository
-        if not self.linforepo.has_key('branchmax'):
+        if rw == True and not self.linforepo.has_key('branchmax'):
             root = bencode({'precursors': [], 'handles': {roothandle: {'add': {'type': 'dir'}, 'name': ''}}})
             self.lcrepo.put(rootnode, root, txn=ltxn)
             self.linforepo.put('branchmax', bencode(0), txn=ltxn)
@@ -81,13 +96,20 @@ class ServerRepository:
                 makedirs(self.cpath)
             except OSError:
                 pass
-        self._txn_commit(ltxn)
+            write_format_version(self.conf_path)
+            write_rebuild_version(self.conf_path)
+
+        if rw == True:
+            self.txn_commit(ltxn)
+
+        else:
+            os.chdir(cwd)
         return
 
     def close(self):
         try:
             for txn in self.txns.keys():
-                self._txn_abort(txn)
+                self.txn_abort(txn)
         except AttributeError:
             return
 
@@ -102,23 +124,24 @@ class ServerRepository:
         self.names.close()
         self.allnamesdb.close()
 
-        self.dbenv.txn_checkpoint()
-        for lfile in self.dbenv.log_archive():
-            os.remove(path.join(self.dbenv.db_home, lfile))
-        self.dbenv.close()
+        if self.dbenv is not None:
+            self.dbenv.txn_checkpoint()
+            for lfile in self.dbenv.log_archive():
+                os.remove(path.join(self.dbenv.db_home, lfile))
+            self.dbenv.close()
 
         return
 
-    def _txn_begin(self):
+    def txn_begin(self):
         txn = self.dbenv.txn_begin()
         self.txns[txn] = 1
         return txn
 
-    def _txn_commit(self, txn):
+    def txn_commit(self, txn):
         txn.commit()
         del self.txns[txn]
 
-    def _txn_abort(self, txn):
+    def txn_abort(self, txn):
         txn.abort()
         del self.txns[txn]
 
@@ -350,7 +373,7 @@ class ServerHandler(ServerRepository):
             return
 
         lstate = socket[Response][mid]
-        lstate['txn'] = self._txn_begin()
+        lstate['txn'] = self.txn_begin()
         lstate['cur head'] = self.repolistdb.get(msg['repository'])
 
         if self.lcrepo.has_key(msg['changenum']):
@@ -454,22 +477,12 @@ class ServerHandler(ServerRepository):
         lstate['counts'][handle] -= 1
         if lstate['counts'][handle] == 0:
             lstate['count'] -= 1
-            hpath = path.join(self.cpath, binascii.hexlify(handle))
-            try:
-                hfile = open(hpath, 'r+b')
-            except IOError:
-                hfile = open(hpath, 'wb')
-            # XXX: do better ordering
-            for change, diff in diffs[handle].items():
-                index = _write_diff(self, hfile, handle, diff, lstate['txn'])
-                write_index(self, change, handle, index, lstate['txn'])
-            hfile.close()
 
-            # run through the merge to make sure it works
-            #lchange = handle_last_modified(self, self.contents, handle, lstate['cur head'], None)
-            #rchange = handle_last_modified(self, self.contents, handle, lstate['head'], None)
-            #refcache = _mini_dag_refcount(self, handle, lchange, lstate['txn'])
-            #_mini_dag_refcount(self, handle, rchange, lstate['txn'], cache=refcache)
+            # write out the diffs
+            WD = WriteDiff(self, handle, lstate['txn'])
+            for change, diff in diffs[handle].items():
+                WD.write(diff, change)
+            WD.close()
 
             # XXX: suboptimal
             change = handle_last_modified(self, self.contents, handle, lstate['cur head'], lstate['txn'])
@@ -498,18 +511,18 @@ class ServerHandler(ServerRepository):
         if self.repolistdb.has_key(repo):
             self._send_error(s, mid, 'repository "' + repo + '" already exists')
             return
-        txn = self._txn_begin()
+        txn = self.txn_begin()
         self.repolistdb.put(repo, rootnode, txn=txn)
-        self._txn_commit(txn)
+        self.txn_commit(txn)
         self._send_response(s, mid, {})
 
     def _remove_repo(self, s, mid, repo):
         if not self.repolistdb.has_key(repo):
             self._send_error(s, mid, 'repository "' + repo + '" does not exist')
             return
-        txn = self._txn_begin()
+        txn = self.txn_begin()
         self.repolistdb.delete(repo, txn)
-        self._txn_commit(txn)
+        self.txn_commit(txn)
         self._send_response(s, mid, {})
 
     def _commit_phase_1(self, s, mid):
@@ -572,7 +585,7 @@ class ServerHandler(ServerRepository):
         head = request['cur head']
 
         if request.has_key('no phase 2'):
-            self._txn_commit(txn)
+            self.txn_commit(txn)
             del self.socket[s][Response][mid]
             self._send_response(s, mid, {})
             return
@@ -621,7 +634,7 @@ class ServerHandler(ServerRepository):
             handle_contents_at_point(self, handle, new_head, txn)
 
         # complete everything and clean up
-        self._txn_commit(txn)
+        self.txn_commit(txn)
         del self.socket[s][Response][mid]
         self._send_response(s, mid, {})
 
@@ -643,7 +656,7 @@ class ServerHandler(ServerRepository):
 
     def _commit_fail(self, s, mid, msg):
         lstate = self.socket[s][Response][mid]
-        self._txn_abort(lstate['txn'])
+        self.txn_abort(lstate['txn'])
         lstate['txn'] = None
         self._send_error(s, mid, msg)
 
@@ -743,7 +756,7 @@ class ServerHandler(ServerRepository):
             if response.has_key('modified'):
                 self._force_unlock_files(s, mid, response['modified'].keys())
             if response.has_key('txn') and response['txn'] is not None:
-                self._txn_abort(response['txn'])
+                self.txn_abort(response['txn'])
 
     def _close(self, s):
         if self.nh.get_req_mode(s):

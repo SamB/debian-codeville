@@ -5,8 +5,10 @@ from bencode import bdecode, bencode
 from db import db
 from history import roothandle, dmerge, rename_conflict_check
 from history import handle_name_at_point, __handle_name_at_point
+from history import _handle_name_at_point
 from history import handle_contents_at_point, handles_in_branch
-from history import sync_history, _name_use_count, _children_count
+from history import handle_last_modified
+from history import _name_use_count, _children_count
 from history import write_diff, write_index, db_get, db_put, HistoryError
 from history import clean_merge_point, simplify_precursors, repo_head
 from history import _is_ancestor
@@ -71,6 +73,7 @@ def handle_name(co, handle, txn):
     if co.handle_name_cache.has_key(handle):
         return co.handle_name_cache[handle]
 
+    # XXX: reading this repeatedly is excessive
     heads = bdecode(co.linforepo.get('heads', txn=txn))
     einfo = {}
     if co.editsdb.has_key(handle, txn):
@@ -165,10 +168,11 @@ def _handle_to_filename(co, handle, names, txn):
         lpath.insert(0, info['name'])
         hseen[handle] = 1
         handle = info['parent']
-    opath = ''
-    for name in lpath:
-        opath = path.join(opath, name)
-    return opath
+    try:
+        return path.join(*lpath)
+    except TypeError:
+        pass
+    return ''
 
 def handle_to_filename(co, handle, txn=None):
     """Convert the given handle to a full path name."""
@@ -226,6 +230,7 @@ def _add_file(co, rep, parent, required, ltxn):
         co.allnamesdb.put(parent + info['name'], handle, flags=db.DB_NODUPDATA, txn=ltxn)
         if type == 'file':
             co.modtimesdb.put(handle, bencode(0), txn=ltxn)
+            co.filenamesdb.put(rep, handle, txn=ltxn)
     return handle
 
 def _set_name(co, handle, parent, name, txn):
@@ -324,7 +329,9 @@ def conflicts_in_file(co, file):
     lines = h.read().split('\n')
     h.close()
     for l in lines:
-        if l.startswith('<<<<<<<') or l.startswith('=======') or l.startswith('>>>>>>>'):
+        if     l == '<<<<<<< local' or \
+               l == '=======' or \
+               l == '>>>>>>> remote':
             return 1
     return 0
 
@@ -340,7 +347,7 @@ def mark_modified_files(co, txn):
         if co.varsdb.get('edit-mode') == '1':
             return
     modtimesdb, editsdb, local = co.modtimesdb, co.editsdb, co.local
-    for handle in modtimesdb.keys(txn):
+    for lfile, handle in co.filenamesdb.items(txn):
         if editsdb.has_key(handle, txn):
             info = bdecode(editsdb.get(handle, txn=txn))
             if info.has_key('hash') or info.has_key('add'):
@@ -349,7 +356,7 @@ def mark_modified_files(co, txn):
         info = db_get(co, co.staticdb, handle, txn)
         if info['type'] != 'file':
             continue
-        lfile = path.join(local, handle_to_filename(co, handle))
+        lfile = path.join(local, lfile)
         try:
             mtime = path.getmtime(lfile)
         except OSError:
@@ -365,12 +372,12 @@ def gen_diff(co, handle, precursors, lines, txn):
     file_points = []
     for pre, index in pres:
         info = handle_contents_at_point(co, handle, pre, txn)
-        file_points.append((info['lines'], info['line points']))
+        file_points.append((info['lines'], info['line points'], info['points']))
 
     result, ms, newlines = find_resolution(file_points, lines)
 
-    # XXX: it's messy but safe to declare a change when we're doing a merge
     # explanation of conditions:
+    # 1: check for a merge
     # 2: check if new lines were added by the user
     # 3: safety for the 4th condition
     # 4: check if the first match in the first (only) file covers everything
@@ -379,7 +386,7 @@ def gen_diff(co, handle, precursors, lines, txn):
            not len(ms[0]) or \
            ms[0][0][2] != len(file_points[0][0]):
 
-        # create a set of correct matches, with holes for the bogus ones
+        # create a set of correct matches, minus ones which are optimized out
         matches = [[] for i in xrange(plen)]
         i = 0
         for pre, index in pres:
@@ -410,7 +417,7 @@ def gen_changeset(co, files, comment, repohead, txn):
             return None
         co.modtimesdb.put(handle, bencode(path.getmtime(lfile)), txn=txn)
         hinfo['hash'] = sha.new(diff).digest()
-        return zlib.compress(diff, 9)
+        return zlib.compress(diff, 6)
 
     precursors = bdecode(co.linforepo.get('heads'))
 
@@ -432,7 +439,7 @@ def gen_changeset(co, files, comment, repohead, txn):
     changeset = {'precursors': precursors}
 
     changeset['handles'] = handles = {}
-    adds, edits, types, names = {}, [], {}, {}
+    adds, nedits, edits, types, names = {}, [], [], {}, {}
     for handle, linfo in files:
         if linfo.has_key('add'):
             adds[handle] = 1
@@ -440,24 +447,64 @@ def gen_changeset(co, files, comment, repohead, txn):
         types[handle] = db_get(co, co.staticdb, handle, None)['type']
 
         handles[handle] = cinfo = {}
-        if linfo.has_key('name'):
-            cinfo['parent'] = linfo['parent']
-            cinfo['name'] = linfo['name']
-            names[handle] = cinfo
-
         if linfo.has_key('delete'):
             assert not linfo.has_key('add')
             assert not linfo.has_key('hash')
             cinfo['delete'] = 1
+        elif     linfo.has_key('name') or \
+                 linfo.has_key('nmerge'):
+            nedits.append((handle, linfo))
+
         if linfo.has_key('add'):
             assert not linfo.has_key('hash')
             cinfo['add'] = {'type': types[handle]}
-        elif linfo.has_key('hash'):
+        elif     linfo.has_key('hash') or \
+                 linfo.has_key('cmerge'):
             assert types[handle] == 'file'
             edits.append(handle)
-        elif cinfo == {}:
-            del handles[handle]
         co.editsdb.delete(handle, txn=txn)
+
+    # generate the name diffs
+    for handle, linfo in nedits:
+        # check if this is really a merge or not
+        # XXX: theoretically we can trust the 'nmerge' flag as set (and
+        # cleared) by _update_helper()
+        merge = False
+        change = prev_change = None
+        for head in precursors:
+            change = handle_last_modified(co, co.names, handle, head, txn, opt=True)
+            if change is None:
+                continue
+
+            if prev_change is None:
+                prev_change = change
+                continue
+
+            left_anc = _is_ancestor(co, prev_change, [change], txn)
+            right_anc = _is_ancestor(co, change, [prev_change], txn)
+
+            if left_anc:
+                prev_change = change
+            elif not right_anc:
+                merge = True
+                break
+
+        # XXX: sanity check for now, we have to do most of the work anyway
+        assert not (linfo.has_key('nmerge') ^ merge)
+
+        # no merge, but maybe the user made an explicit change
+        if not linfo.has_key('nmerge') and change is not None:
+            old_info = _handle_name_at_point(co, handle, change, txn)
+            if old_info['name'] == linfo['name'] and \
+               old_info['parent'] == linfo['parent']:
+                continue
+
+        # looks like we need to include an explicit name change
+        cinfo = handles[handle]
+        hinfo = handle_name(co, handle, txn)
+        cinfo['parent'] = hinfo['parent']
+        cinfo['name'] = hinfo['name']
+        names[handle] = cinfo
 
     # generate the diffs
     indices = {}
@@ -465,10 +512,13 @@ def gen_changeset(co, files, comment, repohead, txn):
         lfile = path.join(co.local, _handle_to_filename(co, handle, names, txn))
         diff = per_file_hash(co, handle, handles[handle], precursors, lfile, txn)
         if diff is None:
-            if handles[handle] == {}:
-                del handles[handle]
             continue
         indices[handle] = write_diff(co, handle, diff, txn)
+
+    # clear out things which didn't actually have changes
+    for handle, linfo in files:
+        if handles[handle] == {}:
+            del handles[handle]
 
     # change all the temporary IDs to permanent, verifiable ones
     ladds, nmap = adds.keys(), {}
@@ -489,7 +539,8 @@ def gen_changeset(co, files, comment, repohead, txn):
         # generate the permanent ID
         if types[handle] == 'file':
             # generate diffs
-            lfile = path.join(co.local, _handle_to_filename(co, handle, names, txn))
+            fname = _handle_to_filename(co, handle, names, txn)
+            lfile = path.join(co.local, fname)
             diff = per_file_hash(co, handle, handles[handle], precursors,
                                  lfile, txn)
             newhandle = create_handle(precursors, hinfo)
@@ -497,6 +548,7 @@ def gen_changeset(co, files, comment, repohead, txn):
             # update the db accordingly
             co.modtimesdb.delete(handle, txn=txn)
             co.modtimesdb.put(newhandle, bencode(path.getmtime(lfile)), txn=txn)
+            co.filenamesdb.put(fname, newhandle, txn=txn)
         else:
             newhandle = create_handle(precursors, hinfo)
         handles[newhandle] = handles[handle]

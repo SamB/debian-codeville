@@ -14,8 +14,8 @@ from client_helpers import name_use_count, rename_race, children_count, parent_l
 from client_helpers import mark_modified_files, find_update_files, find_commit_files
 from client_net import ClientHandler, ClientError, ServerError
 from client_net import network_prep, authenticate
-from db import db, ChangeDBs
-from diff import diff_file
+from db import db, ChangeDBs, write_format_version, write_rebuild_version
+from diff import unified_diff
 from getpass import getpass
 from history import HistoryError, roothandle, rootnode
 from history import dmerge, rename_conflict_check, db_get
@@ -42,45 +42,35 @@ from time import ctime
 
 assert version_info >= (2,3), "Python 2.3 or higher is required"
 
+class CheckoutError(Exception):
+    pass
+
 class Checkout:
-    def __init__(self, local):
+    def __init__(self, local, init=False, metadata_dir='.cdv', rw=True):
         self.local      = local
-        self.conf_path  = path.join(local, 'CVILLE')
+        self.conf_path  = path.join(local, metadata_dir)
 
-        self.dbenv = db.DBEnv()
-        self.dbenv.set_cachesize(0, 4 * 1024 * 1024)
-        self.dbenv.set_lg_bsize(1024 * 1024)
-        self.dbenv.set_get_returns_none(2)
-        self.dbenv.open(self.conf_path, db.DB_CREATE|db.DB_INIT_MPOOL|db.DB_INIT_TXN|db.DB_PRIVATE|db.DB_RECOVER)
-        txn = self.txn_begin()
-        self.lcrepo = db.DB(dbEnv=self.dbenv)
-        self.lcrepo.open('changesets.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.linforepo = db.DB(dbEnv=self.dbenv)
-        self.linforepo.open('info.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.changesdb = db.DB(dbEnv=self.dbenv)
-        self.changesdb.open('changenums.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.branchmapdb = db.DB(dbEnv=self.dbenv)
-        self.branchmapdb.open('branchmap.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.branchdb = db.DB(dbEnv=self.dbenv)
-        self.branchdb.open('branch.db', dbtype=db.DB_RECNO, flags=db.DB_CREATE, txn=txn)
-        self.staticdb = db.DB(dbEnv=self.dbenv)
-        self.staticdb.open('static.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
+        if init == True:
+            try:
+                os.mkdir(self.conf_path)
+            except OSError, err:
+                raise CheckoutError, 'Could not create metadata directory: %s' % (err[1],)
 
-        # open the mini-dags and their indices
-        self.contents = ChangeDBs(self.dbenv, 'content', txn)
-        self.names    = ChangeDBs(self.dbenv, 'name', txn)
+        self.dbenv = None
+        self.txn   = None
+        txn        = None
+        if rw == True:
+            flags = db.DB_CREATE|db.DB_INIT_MPOOL|db.DB_INIT_TXN|db.DB_PRIVATE
+            flags |= db.DB_RECOVER
 
-        self.allnamesdb = db.DB(dbEnv=self.dbenv)
-        self.allnamesdb.set_flags(db.DB_DUPSORT)
-        self.allnamesdb.open('allnames.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
+            self.dbenv = db.DBEnv()
+            self.dbenv.set_cachesize(0, 4 * 1024 * 1024)
+            self.dbenv.set_lg_bsize(1024 * 1024)
+            self.dbenv.set_get_returns_none(2)
+            self.dbenv.open(self.conf_path, flags)
+            txn = self.txn_begin()
 
-        # checkout-specific dbs
-        self.modtimesdb = db.DB(dbEnv=self.dbenv)
-        self.modtimesdb.open('modtimes.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.editsdb = db.DB(dbEnv=self.dbenv)
-        self.editsdb.open('edits.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
-        self.varsdb = db.DB(dbEnv=self.dbenv)
-        self.varsdb.open('vars.db', dbtype=db.DB_BTREE, flags=db.DB_CREATE, txn=txn)
+        self._openDBs(txn, init, rw)
 
         self.name_cache          = {}
         self.handle_name_cache   = {}
@@ -94,10 +84,66 @@ class Checkout:
         self.nopass = 0
         self.user   = None
 
-        populate_local_repos(self, txn)
-        self.txn_commit(txn)
+        if rw == True:
+            if init:
+                write_format_version(self.conf_path)
+                write_rebuild_version(self.conf_path)
+                populate_local_repos(self, txn)
+            self.txn_commit(txn)
+
+        return
+
+    def _openDBs(self, txn, init, rw):
+        flags = 0
+        cwd = os.getcwd()
+        if not rw:
+            os.chdir(self.conf_path)
+            flags |= db.DB_RDONLY
+
+        if init:
+            flags |= db.DB_CREATE
+
+        self.lcrepo = db.DB(dbEnv=self.dbenv)
+        self.lcrepo.open('changesets.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.linforepo = db.DB(dbEnv=self.dbenv)
+        self.linforepo.open('info.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.changesdb = db.DB(dbEnv=self.dbenv)
+        self.changesdb.open('changenums.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.branchmapdb = db.DB(dbEnv=self.dbenv)
+        self.branchmapdb.open('branchmap.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.branchdb = db.DB(dbEnv=self.dbenv)
+        self.branchdb.open('branch.db', dbtype=db.DB_RECNO, flags=flags, txn=txn)
+        self.staticdb = db.DB(dbEnv=self.dbenv)
+        self.staticdb.open('static.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+
+        # open the mini-dags and their indices
+        self.contents = ChangeDBs(self.dbenv, 'content', flags, txn)
+        self.names    = ChangeDBs(self.dbenv, 'name', flags, txn)
+
+        self.allnamesdb = db.DB(dbEnv=self.dbenv)
+        self.allnamesdb.set_flags(db.DB_DUPSORT)
+        self.allnamesdb.open('allnames.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+
+        # checkout-specific dbs
+        self.modtimesdb = db.DB(dbEnv=self.dbenv)
+        self.modtimesdb.open('modtimes.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.editsdb = db.DB(dbEnv=self.dbenv)
+        self.editsdb.open('edits.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        self.varsdb = db.DB(dbEnv=self.dbenv)
+        self.varsdb.open('vars.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        try:
+            self.filenamesdb = db.DB(dbEnv=self.dbenv)
+            self.filenamesdb.open('filenames.db', dbtype=db.DB_BTREE, flags=flags, txn=txn)
+        except db.DBNoSuchFileError:
+            self.filenamesdb = None
+
+        os.chdir(cwd)
+        return
 
     def close(self):
+        if self.txn is not None:
+            self.txn_abort(self.txn)
+
         self.lcrepo.close()
         self.linforepo.close()
         self.changesdb.close()
@@ -110,11 +156,16 @@ class Checkout:
         self.modtimesdb.close()
         self.editsdb.close()
         self.varsdb.close()
+        if self.filenamesdb is not None:
+            self.filenamesdb.close()
 
-        self.dbenv.txn_checkpoint()
-        for lfile in self.dbenv.log_archive():
-            os.remove(path.join(self.dbenv.db_home, lfile))
-        self.dbenv.close()
+        if self.dbenv is not None:
+            self.dbenv.txn_checkpoint()
+            for lfile in self.dbenv.log_archive():
+                os.remove(path.join(self.dbenv.db_home, lfile))
+            self.dbenv.close()
+
+        return
 
     def txn_begin(self):
         self.txn = self.dbenv.txn_begin()
@@ -130,6 +181,16 @@ class Checkout:
         self.txn = None
         return txn.commit()
 
+def cli_init(args):
+    local = args[0]
+    try:
+        co = Checkout(local, init=True)
+        co.close()
+    except CheckoutError, msg:
+        print 'error - %s' % (msg,)
+        return 1
+    return 0
+
 def add(co, files):
     ltxn = co.txn_begin()
 
@@ -138,8 +199,8 @@ def add(co, files):
     glob = Glob(co, files)
     for file, expanded in glob.fs_walk():
         fpath = breakup(file)
-        if 'CVILLE' in fpath:
-            print 'warning - CVILLE is a reserved name'
+        if '.cdv' in fpath:
+            print 'warning - .cdv is a reserved name'
             continue
         # XXX: check for other frobridden names, i.e. '.' and '..'
 
@@ -176,9 +237,6 @@ def delete(co, files):
     fnames = []
     for handle, expanded in Glob(co, files).db_walk():
         file = handle_to_filename(co, handle)
-        if not path.exists(path.join(co.local, file)):
-            print 'warning - %s already deleted from filesystem' % (file,)
-
         fnames.append((file, handle))
 
     # reverse the ordering so that dirs are deleted after their contents
@@ -211,10 +269,18 @@ def delete(co, files):
         print 'deleting: ' + fname
         linfo = db_get(co, co.staticdb, handle, None)
         if linfo['type'] == 'dir':
-            os.rmdir(path.join(co.local, fname))
+            try:
+                os.rmdir(path.join(co.local, fname))
+            except OSError, err:
+                print 'warning - %s: %s' % (err[1], fname)
+
         elif linfo['type'] == 'file':
-            os.remove(path.join(co.local, fname))
+            try:
+                os.remove(path.join(co.local, fname))
+            except OSError, err:
+                print 'warning - %s: %s' % (err[1], fname)
             co.modtimesdb.delete(handle, txn=ltxn)
+            co.filenamesdb.delete(fname, txn=ltxn)
 
     co.txn_commit(ltxn)
     return 0
@@ -263,8 +329,8 @@ def rename(co, oldname, newname):
             print 'error - cannot rename into directory not in repository'
             return 1
 
-    if nname == 'CVILLE':
-        print 'error - CVILLE is a reserved name'
+    if nname == '.cdv':
+        print 'error - .cdv is a reserved name'
         return 1
     if filename_to_handle(co, fnewname) is not None:
         print 'error - ' + newname + ' already exists in repository'
@@ -277,8 +343,17 @@ def rename(co, oldname, newname):
     ltxn = co.txn_begin()
     _set_name(co, ohandle, phandle, nname, ltxn)
     os.rename(path.join(co.local, foldname), path.join(co.local, fnewname))
+    _rebuild_fndb(co, ltxn)
     co.txn_commit(ltxn)
     return 0
+
+def _rebuild_fndb(co, txn):
+    # XXX: crude, should do partial trees
+    co.filenamesdb.truncate(txn=txn)
+    for handle in co.modtimesdb.keys(txn):
+        lfile = handle_to_filename(co, handle)
+        co.filenamesdb.put(lfile, handle, txn=txn)
+    return
 
 def edit(co, files):
     txn = co.txn_begin()
@@ -405,6 +480,8 @@ def _update_helper(co, uinfo, named, modified, txn):
             handles[chandle] = 1
             orphans.append((chandle, cinfo['name']))
 
+    # generate the new list of heads, the new one might encompass zero, some
+    # or all of our existing heads
     pre_heads, temp_heads = heads[:], []
     inserted_head = False
     for head in heads:
@@ -418,6 +495,46 @@ def _update_helper(co, uinfo, named, modified, txn):
         temp_heads.append(rhead)
     heads = temp_heads
     co.linforepo.put('heads', bencode(heads), txn=txn)
+
+    # clear out the merges which the new head resolved for us
+    old_heads = heads[:]
+    old_heads.remove(rhead)
+    for handle, binfo in co.editsdb.items(txn):
+        info = bdecode(binfo)
+
+        if info.has_key('nmerge'):
+            merge = False
+            for head in old_heads:
+                change = handle_last_modified(co, co.names, handle, head, txn, opt=True)
+                if change is not None and not is_ancestor(co, change, rhead, txn):
+                    merge = True
+            if not merge:
+                unset_edit(co, handle, ['nmerge'], txn)
+
+        if info.has_key('cmerge'):
+            merge = False
+            for head in old_heads:
+                change = handle_last_modified(co, co.contents, handle, head, txn)
+                if change is not None and not is_ancestor(co, change, rhead, txn):
+                    merge = True
+            if not merge:
+                unset_edit(co, handle, ['cmerge'], txn)
+
+    # keep track of what's been merged because we have to generate explicit
+    # merge information for them later.
+    for handle in named:
+        for head in heads:
+            change = handle_last_modified(co, co.names, handle, head, txn)
+            if change is not None and not is_ancestor(co, change, rhead, txn):
+                set_edit(co, handle, {'nmerge': 1}, txn)
+
+    for handle in modified:
+        for head in heads:
+            change = handle_last_modified(co, co.contents, handle, head, txn)
+            if change is not None and not is_ancestor(co, change, rhead, txn):
+                set_edit(co, handle, {'cmerge': 1}, txn)
+
+    # clear the name cache
     co.handle_name_cache = {}
 
     for handle, name in orphans:
@@ -584,10 +701,14 @@ def update(co, remote, merge=True):
     # XXX: need to do something about making updates atomic
     txn = co.txn_begin()
     for handle in newfiles.keys():
+        lfile = _handle_to_filename(co, handle, names, None)
+
         #staticinfo = bdecode(co.staticdb.get(handle, txn=txn))
         staticinfo = db_get(co, co.staticdb, handle, txn)
         if staticinfo['type'] == 'dir':
-            mdir(path.join(local, _handle_to_filename(co, handle, names, None)))
+            mdir(path.join(local, lfile))
+        else:
+            co.filenamesdb.put(lfile, handle, txn=txn)
 
     renames = names.keys()
     while renames:
@@ -621,6 +742,10 @@ def update(co, remote, merge=True):
     for lfile, handle in delete_files:
         os.remove(path.join(local, lfile))
         co.modtimesdb.delete(handle, txn=txn)
+        co.filenamesdb.delete(lfile, txn=txn)
+
+    if len(renames):
+        _rebuild_fndb(co, txn)
 
     delete_dirs.sort()
     delete_dirs.reverse()
@@ -709,15 +834,22 @@ def cli_construct(co, spoint):
     txn = co.txn_begin()
 
     # rename everything to the right place
+    co.modtimesdb.truncate(txn)
+    co.filenamesdb.truncate(txn)
     for hfile, handle, htype in newfiles:
         print 'creating: %s' % (hfile,)
         if htype == 'dir':
-            os.mkdir(hfile)
+            try:
+                os.mkdir(hfile)
+            except OSError:
+                if not os.path.isdir(hfile):
+                    raise
             continue
 
         elif htype == 'file':
             os.rename(path.join(co.temppath, binascii.hexlify(handle)), hfile)
             co.modtimesdb.put(handle, bencode(path.getmtime(hfile)), txn=txn)
+            co.filenamesdb.put(hfile, handle, txn=txn)
 
     co.linforepo.put('heads', bencode([point]), txn=txn)
     co.txn_commit(txn)
@@ -738,6 +870,7 @@ def rebuild(co, uheads):
         co.txn_abort(txn)
         return 1
 
+    co.filenamesdb.truncate(txn)
     for handle in co.modtimesdb.keys():
         hinfo = handle_name(co, handle, None)
         if hinfo is None or hinfo.has_key('delete'):
@@ -745,13 +878,17 @@ def rebuild(co, uheads):
             if co.editsdb.has_key(handle):
                 co.editsdb.delete(handle, txn)
 
+        lfile = handle_to_filename(co, handle, txn)
+        co.filenamesdb.put(lfile, handle, txn=txn)
+
     for handle, value in co.editsdb.items(txn):
         if bdecode(value).has_key('delete'):
-            co.editsdb.delete(handle, txn=txn)
+            co.editsdb.delete(handle, txn)
             set_edit(co, handle, {'delete': 1}, txn)
 
     print 'Rebuild done.'
     co.txn_commit(txn)
+    write_rebuild_version(co.conf_path)
     return 0
 
 def cli_is_ancestor(co, point1, point2):
@@ -1424,6 +1561,11 @@ def diff(co, revs, files, print_new):
                       handle))
     hlist.sort()
 
+    if platform == 'win32':
+        spawn = os.spawnv
+    else:
+        spawn = os.spawnvp
+
     for pre_lfile, lfile, handle in hlist:
         #linfo = bdecode(co.staticdb.get(handle))
         linfo = db_get(co, co.staticdb, handle, None)
@@ -1462,7 +1604,7 @@ def diff(co, revs, files, print_new):
             foo.close()
 
             args = diffargs + [file1, file2]
-            os.spawnvp(os.P_WAIT, diffprog, args)
+            spawn(os.P_WAIT, diffprog, args)
 
             os.remove(file1)
             os.removedirs(path.split(file1)[0])
@@ -1471,7 +1613,12 @@ def diff(co, revs, files, print_new):
         else:
             print '--- ' + pre_lfile
             print '+++ ' + lfile
-            stdout.write(diff_file(pre_lines, lines))
+            # the diff code assumes \n after each line, not between lines
+            if pre_lines[-1] == '':
+                pre_lines.pop()
+            if lines[-1] == '':
+                lines.pop()
+            stdout.write(unified_diff(pre_lines, lines))
 
     if diffpath is not None:
         os.unlink(path.join(diffpath, 'holder'))
@@ -1678,9 +1825,13 @@ def revert(co, files, unmod_flag):
             if     info.has_key('add') or \
                    info.has_key('name') or \
                    info.has_key('delete'):
-                print 'warning - revert cannot undo name change on %s' % (filename,)
+                print 'warning - cannot revert name operation on %s' % (filename,)
 
-            if info.has_key('hash'):
+            # XXX: hack until reverts on name ops work
+            if info.has_key('add'):
+                exists = True
+
+            elif info.has_key('hash'):
                 editted = True
 
         elif exists:
@@ -1761,13 +1912,16 @@ def revert(co, files, unmod_flag):
     print 'revert succeeded'
     return 0
 
-def find_co(local):
+class PathError(Exception):
+    pass
+
+def find_co(local, metadata_dir='.cdv'):
     if not path.exists(local):
         raise Exception, 'path ' + local + ' does not exist'
-    while not path.exists(path.join(local, "CVILLE")):
+    while not path.exists(path.join(local, metadata_dir)):
         parent = path.split(local)[0]
         if local == parent:
-            raise Exception, 'cannot find checkout, add a directory named CVILLE to create one'
+            raise PathError, 'cannot find checkout, use "cdv init" to create one'
         local = parent
     return local
 
@@ -1810,7 +1964,7 @@ sht = None
 ag = None
 agt = None
 
-def init_test(local, remote):
+def init_test(local, remote, remote2):
     global sh, sht
     global ag, agt
     if path.exists(local):
@@ -1844,14 +1998,14 @@ def init_test(local, remote):
     agt = Thread(target = ag.listen, args = [])
     agt.start()
 
-    os.makedirs(path.join(local, 'co', 'CVILLE'))
-    co = Checkout(path.join(local, 'co'))
+    os.makedirs(path.join(local, 'co'))
+    co = Checkout(path.join(local, 'co'), init=True)
     txn = co.txn_begin()
     co.varsdb.put('user', 'unittest', txn=txn)
     co.txn_commit(txn)
 
-    os.makedirs(path.join(local, 'co2', 'CVILLE'))
-    co2 = Checkout(path.join(local, 'co2'))
+    os.makedirs(path.join(local, 'co2'))
+    co2 = Checkout(path.join(local, 'co2'), init=True)
     txn = co2.txn_begin()
     co2.varsdb.put('user', 'unittest2', txn=txn)
     co2.txn_commit(txn)
@@ -1859,6 +2013,7 @@ def init_test(local, remote):
     co.nopass = co2.nopass = 1
     co.repo = co2.repo = tuple_to_server(remote)
     create_repo(co, remote)
+    create_repo(co, remote2)
     return co, co2
 
 def shutdown_test(local, cos):
@@ -1883,24 +2038,26 @@ def shutdown_test(local, cos):
 
     for co in cos:
         co.close()
-    if path.exists(local):
-        rm_rf([local])
 
 def reset_co(co):
     txn = co.txn_begin()
     co.linforepo.put('heads', bencode([rootnode]), txn=txn)
     co.editsdb.truncate(txn=txn)
     co.modtimesdb.truncate(txn=txn)
+    co.filenamesdb.truncate(txn=txn)
     co.txn_commit(txn)
     co.handle_name_cache = {}
     for lamb in os.listdir(co.local):
-        if lamb == 'CVILLE':
+        if lamb == '.cdv':
             continue
         rm_rf([path.join(co.local, lamb)])
 
-def reset_test(co, co2, remote):
+def reset_test(co, co2, remote, remote2=None):
     remove_repo(co, remote)
     create_repo(co, remote)
+    if remote2:
+        remove_repo(co, remote2)
+        create_repo(co, remote2)
     reset_co(co)
     reset_co(co2)
 
@@ -1908,11 +2065,27 @@ def test_client():
     global ServerHandler, Thread
     from server import ServerHandler
     from threading import Thread
+
     local = path.abspath('test')
     cop = path.join(local, 'co')
     co2p = path.join(local, 'co2')
+
     repo = server_to_tuple('cdv://localhost:6602/unittest')
-    co, co2 = init_test(local, repo)
+    repo2 = server_to_tuple('cdv://localhost:6602/unittest2')
+
+    co, co2 = init_test(local, repo, repo2)
+    try:
+        _test_client(co, cop, co2, co2p, repo, repo2)
+    except (AssertionError, Exception):
+        shutdown_test(local, [co, co2])
+        raise
+
+    shutdown_test(local, [co, co2])
+    if path.exists(local):
+        rm_rf([local])
+    return
+
+def _test_client(co, cop, co2, co2p, repo, repo2):
     print 'TESTING merge conflict'
     set_file_contents(path.join(cop, 'a'), "aaa\nbbb\nccc\nddd\neee\nfff\n")
     add(co, [path.join(cop, 'a')])
@@ -2118,6 +2291,8 @@ def test_client():
     rename(co, path.join(cop, 'a'), path.join(cop, 'b'))
     assert commit(co, repo, '') == 0
     rename(co2, path.join(co2p, 'a'), path.join(co2p, 'b'))
+    assert commit(co2, repo, '') == 1
+    assert update(co2, repo) == 0
     assert commit(co2, repo, '') == 0
     rename(co, path.join(cop, 'b'), path.join(cop, 'c'))
     assert commit(co, repo, '') == 0
@@ -2137,6 +2312,24 @@ def test_client():
     assert commit(co, repo, '') == 0
     assert update(co2, repo) == 0
     assert path.exists(path.join(co2p, 'b', 'b', 'b', 'b'))
+    print 'TESTING update overrides coincidental name merge'
+    reset_test(co, co2, repo)
+    set_file_contents(path.join(cop, 'a'), '')
+    add(co, [path.join(cop, 'a')])
+    assert commit(co, repo, '') == 0
+    assert update(co2, repo) == 0
+    rename(co, path.join(cop, 'a'), path.join(cop, 'b'))
+    assert commit(co, repo, '') == 0
+    rename(co2, path.join(co2p, 'a'), path.join(co2p, 'b'))
+    assert commit(co2, repo2, '') == 0
+    assert update(co, repo2) == 0
+    assert update(co2, repo) == 0
+    assert commit(co2, repo, '') == 0
+    assert update(co, repo) == 0
+    rename(co, path.join(cop, 'b'), path.join(cop, 'c'))
+    assert commit(co, repo, '') == 0
+    assert update(co2, repo) == 0
+    assert path.exists(path.join(co2p, 'c'))
     print 'TESTING delete orphan'
     reset_test(co, co2, repo)
     os.makedirs(path.join(cop, 'a'))
@@ -2291,5 +2484,3 @@ def test_client():
     assert update(co2, repo) == 1
     assert not path.exists(path.join(co2p, 'a'))
     assert path.isfile(path.join(co2p, 'b'))
-    shutdown_test(local, [co, co2])
-
