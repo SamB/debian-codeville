@@ -38,9 +38,9 @@ setup(
     author = "Ross Cohen",
     author_email = "<rcohen@snurgle.org>",
     url = "http://www.codeville.org/",
-    license = "OSL",
+    license = "BSD",
 
-    packages = ["Codeville"],
+    packages = ["Codeville", "Codeville/old"],
     ext_modules = plat_ext,
 
     scripts = scripts,

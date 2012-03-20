@@ -541,8 +541,7 @@ def gen_changeset(co, files, comment, repohead, txn):
             # generate diffs
             fname = _handle_to_filename(co, handle, names, txn)
             lfile = path.join(co.local, fname)
-            diff = per_file_hash(co, handle, handles[handle], precursors,
-                                 lfile, txn)
+            diff = per_file_hash(co, handle, handles[handle], [], lfile, txn)
             newhandle = create_handle(precursors, hinfo)
             indices[newhandle] = write_diff(co, newhandle, diff, txn)
             # update the db accordingly

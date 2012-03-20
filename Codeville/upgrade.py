@@ -80,7 +80,7 @@ class UpgradeRepository:
         return clean_merges, handles
 
 
-def upgrade(old_repo, new_repo, txn):
+def upgrade(old_repo, new_repo, changes, txn):
     UR = UpgradeRepository(old_repo, new_repo, txn)
 
     for old_handle in old_repo.staticdb.keys():
@@ -89,7 +89,7 @@ def upgrade(old_repo, new_repo, txn):
             UR.all_old_handles[old_handle] = hinfo
 
     # sort the history
-    ordering = UR.sort_history(old_repo.lcrepo.keys())
+    ordering = UR.sort_history(changes)
 
     # sort again for better dag construction
     ordering.reverse()
@@ -136,7 +136,7 @@ def convert_cset(UR, point):
 
     elif old_cset['handles'] != {} or len(old_cset['precursors']) != 2:
         clean_merge = False
-        new_cset['comment'] = "--- comment inserted by cdvupgrade ---\n"
+        new_cset['comment'] = '--- comment inserted by cdvupgrade ---\n'
 
     # sort the handles
     handle_list = UR.sort_names(old_cset['handles'])
@@ -180,13 +180,14 @@ def convert_cset(UR, point):
 
             # if the file is being added, there are no precursors
             precursors = []
-            if new_handle is not None:
+            if new_handle is not None and not old_hinfo.has_key('add'):
                 precursors = new_cset['precursors']
 
             # generate the diff against the new repo
             dinfo = gen_diff(UR.new_repo, new_handle, precursors, lines, UR.txn)
             if old_hinfo.has_key('add'):
                 dinfo['add'] = 1
+                assert dinfo['matches'] == []
 
             if dinfo is not None:
                 diff = bencode(dinfo)
@@ -207,8 +208,9 @@ def convert_cset(UR, point):
             # if the file is new, we have to create the handle before writing
             # the diff
             if old_hinfo.has_key('add'):
-                assert new_handle is None
-                new_handle = create_handle(new_cset['precursors'], new_hinfo)
+                nhandle = create_handle(new_cset['precursors'], new_hinfo)
+                assert new_handle is None or new_handle == nhandle
+                new_handle = nhandle
                 UR.handle_map[old_handle] = new_handle
 
             # write out the new diff
@@ -218,9 +220,10 @@ def convert_cset(UR, point):
 
         elif old_hinfo.has_key('add'):
             assert old_hinfo['add']['type'] == 'dir'
-            assert new_handle is None
 
-            new_handle = create_handle(new_cset['precursors'], new_hinfo)
+            nhandle = create_handle(new_cset['precursors'], new_hinfo)
+            assert new_handle is None or new_handle == nhandle
+            new_handle = nhandle
             UR.handle_map[old_handle] = new_handle
 
         if new_hinfo != {}:
@@ -231,7 +234,7 @@ def convert_cset(UR, point):
     if clean_merge and force_new_cset:
         forced_cset = new_cset
 
-        forced_cset['comment'] = "--- change created by cdvupgrade ---\n"
+        forced_cset['comment'] = '--- change created by cdvupgrade ---\n'
 
         bforced_cset = bencode(forced_cset)
         forced_point = sha.new(bforced_cset).digest()
