@@ -1,0 +1,12 @@
+[control]
+#datadir=/var/lib/cdvserver
+#pidfile=/var/run/cdvserver.pid
+#logfile=/var/log/cdvserver.log
+#backup=False
+#port=6601
+user=cdv
+
+[post-commit]
+# keys are regular expression matching repository names
+# values are programs which will be sent XML through stdin
+#.*=cat >> /var/log/cdvcommits.log

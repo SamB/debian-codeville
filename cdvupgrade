@@ -1,0 +1,258 @@
+#!/usr/bin/env python
+
+# Written by Ross Cohen
+# see LICENSE.txt for license information
+
+import binascii
+from Codeville.bencode import bdecode, bencode
+from Codeville.client_helpers import create_handle, gen_diff
+from Codeville.DFS import DFS
+from Codeville.history import sync_history, verify_history, write_changeset
+from Codeville.history import roothandle, rootnode
+from Codeville.history import read_diff, write_diff, write_index
+from Codeville.history import handle_contents_at_point
+from Codeville.history import handle_name_at_point
+from Codeville.history import HistoryError
+from Codeville.server import ServerRepository
+import copy
+from os import path
+import sha
+from sys import argv, stdout, version_info
+import zlib
+
+assert version_info >= (2,3), "Python 2.3 or higher is required"
+
+
+def history_deps(node, args):
+    co = args[0]
+
+    cset = bdecode(co.lcrepo.get(node))
+    cset['precursors'].reverse()
+
+    return cset['precursors']
+
+
+def name_deps(node, args):
+    handles = args[0]
+
+    if handles.has_key(node) and handles[node].has_key('parent'):
+        parent = handles[node]['parent']
+        if handles.has_key(parent) and handles[parent].has_key('name'):
+            return [parent]
+
+    return []
+
+
+old_repo = ServerRepository()
+old_repo._db_init(path.abspath(argv[1]))
+new_repo = ServerRepository()
+new_repo._db_init(path.abspath(argv[2]))
+
+txn = new_repo._txn_begin()
+
+point_map = {}
+handle_map = {}
+
+all_old_handles = {}
+for old_handle in old_repo.staticdb.keys():
+    hinfo = bdecode(old_repo.staticdb.get(old_handle))
+    if hinfo['type'] == 'file':
+        all_old_handles[old_handle] = hinfo
+
+# sort the history
+history_dfs = DFS(history_deps, [old_repo])
+for point in old_repo.lcrepo.keys():
+    history_dfs.search(point)
+ordering = history_dfs.result()
+
+# sort again for better dag construction
+history_dfs = DFS(history_deps, [old_repo])
+ordering.reverse()
+for point in ordering:
+    history_dfs.search(point)
+ordering = history_dfs.result()
+
+assert rootnode == ordering[0]
+
+print "%d changesets to convert" % (len(ordering), )
+
+for point in ordering:
+    indices = {}
+
+    old_cset = bdecode(old_repo.lcrepo.get(point))
+
+    new_cset = {}
+    new_cset['precursors'] = [point_map[pre] for pre in old_cset['precursors']]
+
+    if old_cset.has_key('time'):
+        new_cset['time'] = old_cset['time']
+
+    if old_cset.has_key('user'):
+        new_cset['user'] = old_cset['user']
+
+    # some heuristics for comments and whether this was a server change
+    clean_merge = True
+    force_new_cset = False
+
+    if old_cset.has_key('comment'):
+        clean_merge = False
+        new_cset['comment'] = old_cset['comment'].rstrip()
+        if len(new_cset['comment']):
+            new_cset['comment'] = new_cset['comment'] + '\n'
+
+    elif point == rootnode:
+        pass
+
+    elif old_cset['handles'] != {} or len(old_cset['precursors']) != 2:
+        clean_merge = False
+        new_cset['comment'] = '--- comment inserted by cdvupgrade ---'
+
+    # sort the handles
+    name_dfs = DFS(name_deps, [old_cset['handles']])
+    for old_handle in old_cset['handles'].keys():
+        name_dfs.search(old_handle)
+    handle_list = name_dfs.result()
+
+    clean_merges = {}
+    old_dagdb = old_repo.contents.dagdb
+    for old_handle in all_old_handles.keys():
+        if not old_dagdb.has_key(old_handle + point):
+            continue
+
+        hinfo = bdecode(old_dagdb.get(old_handle + point))
+        if hinfo.has_key('handle'):
+            continue
+
+        if len(hinfo['precursors']) <= 1:
+            continue
+
+        clean_merges[old_handle] = 1
+        handle_list.append(old_handle)
+
+    new_cset['handles'] = handles = {}
+    for old_handle in handle_list:
+        old_hinfo = None
+        try:
+            old_hinfo = old_cset['handles'][old_handle]
+        except KeyError:
+            old_hinfo = {}
+
+        # not much has changed
+        new_hinfo = copy.copy(old_hinfo)
+
+        new_handle = None
+        if handle_map.has_key(old_handle):
+            new_handle = handle_map[old_handle]
+
+        # fixup the parent pointers
+        if old_hinfo.has_key('parent'):
+            new_hinfo['parent'] = handle_map[old_hinfo['parent']]
+
+        if old_hinfo.has_key('hash') or clean_merges.has_key(old_handle):
+            # figure out what the file is supposed to look like now
+            try:
+                lines = handle_contents_at_point(old_repo, old_handle, point, None)['lines']
+            except HistoryError:
+                print '\n' + binascii.hexlify(point)
+                print handle_name_at_point(old_repo, old_handle, point, None)
+                raise
+
+            # if the file is being added, there are no precursors
+            precursors = []
+            if new_handle is not None:
+                precursors = new_cset['precursors']
+
+            # generate the diff against the new repo
+            dinfo = gen_diff(new_repo, new_handle, precursors, lines, txn)
+            if old_hinfo.has_key('add'):
+                dinfo['add'] = 1
+
+            if dinfo is not None:
+                diff = bencode(dinfo)
+                new_hinfo['hash'] = sha.new(diff).digest()
+
+                # if this used to be a clean merge, we have to replace it
+                if not old_cset.has_key(old_handle) or not old_cset[old_handle].has_key('hash'):
+                    force_new_cset = True
+
+            elif new_hinfo.has_key('hash'):
+                del new_hinfo['hash']
+
+            # sanity check
+            if new_handle is None:
+                assert old_hinfo.has_key('add')
+                assert old_hinfo['add']['type'] == 'file'
+
+            # if the file is new, we have to create the handle before writing
+            # the diff
+            if old_hinfo.has_key('add'):
+                assert new_handle is None
+                new_handle = create_handle(new_cset['precursors'], new_hinfo)
+                handle_map[old_handle] = new_handle
+
+            # write out the new diff
+            if new_hinfo.has_key('hash'):
+                zdiff = zlib.compress(diff, 9)
+                indices[new_handle] = write_diff(new_repo, new_handle, zdiff, txn)
+
+        elif old_hinfo.has_key('add'):
+            assert old_hinfo['add']['type'] == 'dir'
+            assert new_handle is None
+
+            new_handle = create_handle(new_cset['precursors'], new_hinfo)
+            handle_map[old_handle] = new_handle
+
+        if new_hinfo != {}:
+            handles[new_handle] = new_hinfo
+
+    # if it used to be a clean merge, preserve the line of clean merge heads
+    index_point = None
+    if clean_merge and force_new_cset:
+        forced_cset = new_cset
+
+        forced_cset['comment'] = '--- change created by cdvupgrade ---'
+
+        bforced_cset = bencode(forced_cset)
+        forced_point = sha.new(bforced_cset).digest()
+        new_repo.lcrepo.put(forced_point, bforced_cset, txn=txn)
+
+        index_point = forced_point
+
+        new_cset = {'precursors': [forced_cset['precursors'][0], forced_point],
+                    'user':       forced_cset['user'],
+                    'time':       forced_cset['time'],
+                    'handles':    {}}
+
+    # calculate the new point name and write it out
+    bnew_cset = bencode(new_cset)
+    new_point = sha.new(bnew_cset).digest()
+    new_repo.lcrepo.put(new_point, bnew_cset, txn=txn)
+
+    point_map[point] = new_point
+
+    if index_point is None:
+        index_point = new_point
+
+    # now that we know the new point name, write out the indices
+    for new_handle, index in indices.items():
+        write_index(new_repo, index_point, new_handle, index, txn)
+
+    # diff generation depends on history syncing
+    named, modified = sync_history(new_repo, new_point, txn)
+    verify_history(new_repo, new_point, named, [], txn)
+
+    for new_handle in modified:
+        handle_contents_at_point(new_repo, new_handle, new_point, txn)
+
+    stdout.write('.')
+    stdout.flush()
+
+# write the new repository heads
+for repo, head in old_repo.repolistdb.items():
+    new_repo.repolistdb.put(repo, point_map[head], txn=txn)
+
+assert rootnode == point_map[ordering[0]]
+
+old_repo.close()
+new_repo._txn_commit(txn)
+new_repo.close()

@@ -1,0 +1,353 @@
+#!/usr/bin/env python
+
+# Written by Ross Cohen
+# See LICENSE.txt for license information.
+
+import binascii
+from Codeville.db import db
+from Codeville.client import add, delete, rename, revert, edit
+from Codeville.client import history, status, diff, describe
+from Codeville.client import update, commit, set_password, rebuild
+from Codeville.client import create_repo, remove_repo, list_repos
+from Codeville.client import find_co, server_to_tuple, Checkout
+from Codeville.client import cli_is_ancestor, cli_print_dag, cli_print_big_dag
+from Codeville.client import cli_construct, cli_heads, cli_last_modified
+from Codeville.history import long_id, short_id
+from Codeville.history import ChangeNotKnown, ChangeNotUnique, ChangeBadRepository
+from getopt import getopt, GetoptError
+import os
+from random import seed
+from sys import argv, exit
+from time import time
+from traceback import print_exc
+
+def run_add(co, opts, args):
+    return add(co, args)
+
+def run_remove(co, opts, args):
+    return delete(co, args)
+
+def run_rename(co, opts, args):
+    return rename(co, args[0], args[1])
+
+def run_revert(co, opts, args):
+    unmod_flag = 0
+    for (opt, arg) in opts:
+        if opt == '-a':
+            unmod_flag = 1
+    return revert(co, args, unmod_flag)
+
+def run_edit(co, opts, args):
+    return edit(co, args)
+
+def run_history(co, opts, args):
+    head, limit, skip = None, -1, 0
+    v = 0
+    for (opt, arg) in opts:
+        if   opt == '-h':
+            head = long_id(co, arg)
+
+        elif opt == '-n':
+            try:
+                limit = int(arg)
+            except ValueError:
+                print 'Invalid count: ' + arg
+                return 1
+
+        elif opt == '-s':
+            try:
+                skip = int(arg)
+            except ValueError:
+                print 'Invalid skip: ' + arg
+                return 1
+            if skip < 0:
+                print 'Invalid skip: ' + arg
+                return 1
+
+        elif opt == '-v':
+            v = 1
+
+    return history(co, head, limit, skip, v, args)
+
+def run_status(co, opts, args):
+    verbose = 0
+    for (opt, arg) in opts:
+        if opt == '-v':
+            verbose = 1
+
+    return status(co, args, verbose)
+
+def run_heads(co, opts, args):
+    return cli_heads(co)
+
+def run_last_mod(co, opts, args):
+    uhead = None
+    for (opt, arg) in opts:
+        if opt == '-h':
+            uhead = arg
+    return cli_last_modified(co, args[0], uhead)
+
+def run_diff(co, opts, args):
+    print_new = False
+    rev = [co.repo, 'local']
+    revnum = 0
+    for (opt, arg) in opts:
+        if opt == '-r':
+            if revnum == 2:
+                print '-r cannot be used more than twice'
+                return 1
+            rev[revnum] = arg
+            revnum += 1
+
+        elif opt == '-N':
+            print_new = True
+
+    return diff(co, rev, args, print_new)
+
+def run_update(co, opts, args):
+    merge = True
+    for (opt, arg) in opts:
+        if opt == '-d':
+            merge = False
+
+    if co.repo is None:
+        print 'error - no server specified'
+        return 1
+
+    remote = server_to_tuple(co.repo)
+    if remote is None or remote[2] is None:
+        print 'error - Invalid server: ' + co.repo
+        return 1
+    return update(co, remote, merge=merge)
+
+def run_commit(co, opts, args):
+    backup, comment, noserver = False, None, 0
+    for (opt, arg) in opts:
+        if opt == '-b':
+            backup = True
+        elif opt == '-m':
+            comment = arg
+        elif opt == '-n':
+            noserver = 1
+    if noserver or co.repo is None:
+        co.repo = None
+        remote  = None
+    else:
+        remote = server_to_tuple(co.repo)
+        if remote is None or remote[2] is None:
+            print 'error - Invalid server: ' + co.repo
+            return 1
+    return commit(co, remote, comment, backup=backup, files=args)
+
+def run_construct(co, opts, args):
+    return cli_construct(co, args[0])
+
+def run_rebuild(co, opts, args):
+    uheads = []
+    for (opt, arg) in opts:
+        if opt == '-h':
+            uheads.append(arg)
+    return rebuild(co, uheads)
+
+def run_is_ancestor(co, opts, args):
+    return cli_is_ancestor(co, args[0], args[1])
+
+def run_print_history(co, opts, args):
+    return cli_print_big_dag(co, args)
+
+def run_print_dag(co, opts, args):
+    uheads = []
+    for (opt, arg) in opts:
+        if opt == '-h':
+            uheads.append(arg)
+    return cli_print_dag(co, args[0], uheads)
+
+def run_create(co, opts, args):
+    remote = server_to_tuple(args[0])
+    if remote is None or remote[2] is None:
+        print 'Invalid server: ' + args[0]
+        return 1
+    return create_repo(co, remote)
+
+def run_destroy(co, opts, args):
+    remote = server_to_tuple(args[0])
+    if remote is None or remote[2] is None:
+        print 'Invalid server: ' + args[0]
+        return 1
+    return remove_repo(co, remote)
+
+def run_list(co, opts, args):
+    return list_repos(co)
+
+def run_set(co, opts, args):
+    txn = co.dbenv.txn_begin()
+    co.varsdb.put(args[0], args[1], txn=txn)
+    txn.commit()
+    print 'Variable set'
+    return 0
+
+def run_unset(co, opts, args):
+    txn = co.dbenv.txn_begin()
+    try:
+        co.varsdb.delete(args[0], txn=txn)
+    except db.DBNotFoundError:
+        print 'Variable was not set'
+        txn.abort()
+        return 1
+    txn.commit()
+    print 'Variable unset'
+    return 0
+
+def run_show_vars(co, opts, args):
+    for item in co.varsdb.items():
+        print "%s:\t%s" % item
+    return 0
+
+def run_describe(co, opts, args):
+    dodiff, short, xml = False, False, False
+    for (opt, arg) in opts:
+        if opt == '-d':
+            dodiff = True
+        elif opt == '-s':
+            short = True
+        elif opt == '-x':
+            xml = True
+
+    if dodiff and xml:
+        print 'error - Only 1 of -x, -d is allowed'
+        return 1
+
+    return describe(co, args[0], short, xml, dodiff, args[1:])
+
+def run_password(co, opts, args):
+    return set_password(co)
+
+commands = {'add':        (run_add,       '',     1, None),
+            'rename':     (run_rename,    '',     2, 2),
+            'remove':     (run_remove,    '',     1, None),
+            'revert':     (run_revert,    'a',    1, None),
+            'edit':       (run_edit,      '',     1, None),
+            'diff':       (run_diff,      'r:N',  0, None),
+            'describe':   (run_describe,  'dsx',  1, None),
+            'history':    (run_history,   'h:n:s:v', 0, None),
+            'status':     (run_status,    'v',    0, None),
+            'heads':      (run_heads,     '',     0, 0),
+            'last-modified': (run_last_mod, 'h:', 1, 1),
+            'update':     (run_update,    'd',    0, 0),
+            'commit':     (run_commit,    'bm:n', 0, None),
+            'construct':  (run_construct, '',     1, 1),
+            'rebuild':    (run_rebuild,   'h:',   0, 0),
+            'is_ancestor': (run_is_ancestor, '',  2, 2),
+            'print_dag':  (run_print_dag, 'h:',   1, 1),
+            'print_history': (run_print_history, '', 0, None),
+            'create':     (run_create,    '',     1, 1),
+            'destroy':    (run_destroy,   '',     1, 1),
+            'list-repos': (run_list,      '',     0, 0),
+            'set':        (run_set,       '',     2, 2),
+            'unset':      (run_unset,     '',     1, 1),
+            'show-vars':  (run_show_vars, '',     0, 0),
+            'password':   (run_password,  '',     0, 0)}
+
+def run_help():
+    print 'Valid commands are:\n\t',
+    coms = commands.keys()
+    coms.sort()
+    print '\n\t'.join(coms)
+
+def run(args):
+    seed(time() + os.getpid())
+    local, repo, user = None, None, None
+    retval = 1
+    try:
+        optlist, args = getopt(args, 'p:r:u:')
+    except GetoptError:
+        print "Valid options are:\n\t-p <path> to checkout\n\t-r <URL> for the repository for this operation\n\t-u <user>"
+        return 1
+    for (opt, arg) in optlist:
+        if opt == '-p':
+            local = os.path.abspath(arg)
+        elif opt == '-r':
+            repo = arg
+        elif opt == '-u':
+            user = arg
+    if args == []:
+        run_help()
+        return 1
+    if local is None:
+        local = os.getcwd()
+    try:
+        local = find_co(local)
+    except Exception, msg:
+        print msg
+        return 1
+
+    co = Checkout(local)
+
+    if repo is None:
+        co.repo = co.varsdb.get('repository')
+    else:
+        co.repo = repo
+
+    if user is not None:
+        co.user = user
+
+    # parse the command line options
+    try:
+        command = commands[args[0]]
+        cname = args[0]
+    except KeyError:
+        run_help()
+        return 1
+    try:
+        optlist, args = getopt(args[1:], command[1])
+    except GetoptError, msg:
+        print 'error - ' + str(msg)
+        return 1
+
+    # check the proper number of arguments were passed
+    if len(args) < command[2]:
+        print 'Too few arguments to "%s" (requires %s).' % \
+              (cname, command[2])
+        return 1
+
+    elif command[3] is not None and len(args) > command[3]:
+        print 'Too many arguments to "%s" (max %d).' % \
+              (cname, command[3])
+        return 1
+
+    try:
+        retval = command[0](co, optlist, args)
+    except KeyboardInterrupt:
+        print 'Aborting...'
+    except ChangeNotKnown, point:
+        print 'error - %s is not a valid changeset' % (point,)
+    except ChangeNotUnique, (point, changes):
+        changes = [short_id(co, binascii.unhexlify(change)) for change in changes]
+        print 'error - %s matches more than one changeset:\n\t%s' % \
+              (point, '\n\t'.join(changes))
+    except ChangeBadRepository, repo:
+        print 'error - %s is not a known repository' % (repo,)
+    except:
+        print_exc()
+
+    # clean up and shut down
+    if co.txn is not None:
+        co.txn_abort(co.txn)
+    co.close()
+
+    return retval
+
+if __name__ == '__main__':
+    #if 0:
+    #    import hotshot, hotshot.stats
+    #    prof = hotshot.Profile("cdv.prof")
+    #    retval = prof.runcall(run, argv[1:])
+    #    prof.close()
+    #    stats = hotshot.stats.load("cdv.prof")
+    #    stats.strip_dirs()
+    #    stats.sort_stats('time', 'calls')
+    #    stats.print_stats()
+    #else:
+    #    retval = run(argv[1:])
+    retval = run(argv[1:])
+    exit(retval)
