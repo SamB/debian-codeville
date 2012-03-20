@@ -19,6 +19,13 @@ rootnode = '\xb3L\xac\x1f\x98B\x15\\\x8c\t0&\xd7m\xecK\xdd\n\x81\xc4'
 class HistoryError(Exception):
     pass
 
+def damerge(*dargs):
+    dc = {}
+    for dm in dargs:
+        dc.update({}.fromkeys(dm))
+    return dc.keys()
+
+# keeping this one for possible performance reasons, need to measure
 def dmerge(da, db):
     dc = {}.fromkeys(da)
     dc.update({}.fromkeys(db))
@@ -247,8 +254,12 @@ def sync_history(co, point, txn, cache=dict()):
     points = sync_dfs.result()
 
     for npoint in points:
-        named, modified = _sync_history(co, npoint, txn, cache=cache)
+        named, modified, unnamed, unmodified = \
+               _sync_history(co, npoint, txn, cache=cache)
+        unchecked = dict.fromkeys(unnamed)
         for handle in named:
+            if handle in unchecked:
+                continue
             _verify_manifest(co, handle, npoint, txn)
         co.changesdb.put(binascii.hexlify(npoint), '', txn=txn)
 
@@ -333,15 +344,22 @@ def _sync_history(co, point, txn, cache=dict()):
             db_put(co, co.staticdb, handle, {'type': value['add']['type']}, txn)
 
     # figure out which files were modified here and hand off to helpers
-    named, modified = handles_in_branch(co, pre_important, [point], txn, cache=cache)
+    named, modified, added, deleted = \
+           handles_in_branch(co, pre_important, [point], txn, cache=cache)
 
+    named = damerge(named, added, deleted)
+    modified = damerge(modified, added, deleted)
+
+    # function with side effects, modifies named and modified
     pinfo['point'] = point
-    _update_mini_dag(co, co.names, _update_helper_name,
-                     named, pinfo, txn)
-    _update_mini_dag(co, co.contents, _update_helper_content,
-                     modified, pinfo, txn)
+    unnamed    = _update_mini_dag(co, co.names,
+                                  _update_helper_name, named,
+                                  pinfo, txn)
+    unmodified = _update_mini_dag(co, co.contents,
+                                  _update_helper_content, modified,
+                                  pinfo, txn)
 
-    return (named, modified)
+    return (named, modified, unnamed, unmodified)
 
 def _verify_manifest(co, handle, point, txn):
     state = _handle_name_at_point(co, handle, point, txn)
@@ -463,18 +481,47 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
     bminfo = db_get(co, co.branchmapdb, point, txn)
     bnum = struct.pack('>II', bminfo['branch'], bminfo['branchnum'])
 
+    untouched = []
+
     for handle in handles:
         precursors = simplify_precursors(co, handle, changedbs, pres, txn)[0]
 
         mdinfo = {'handle': {}}
-        if cset['handles'].has_key(handle):
+
+        # there's some broken history, need to work around it for now
+        # deleted files are deleted, regardless of later edits
+        deleted = None
+        #if len(precursors) > 1:
+        if True:
+            # only deletes can be implicitly merged
+            all_deleted = True
+            for pre in precursors:
+                phinfo = bdecode(dagdb.get(handle + pre[0], txn=txn))
+                if phinfo['handle'].has_key('delete'):
+                    deleted = phinfo
+                else:
+                    all_deleted = False
+
+            if all_deleted:
+                if len(precursors) > 1:
+                    # affects finding when the handle was modified
+                    untouched.append(handle)
+                    continue
+
+        if deleted is not None:
+            mdinfo['handle'] = deleted['handle']
+
+        elif cset['handles'].has_key(handle):
             mdinfo['handle'] = helper(co, handle, point, precursors,
                                       cset['handles'][handle], txn)
+
         if mdinfo['handle'] == {}:
+            if deleted is None:
+                if len(precursors) > 1:
+                    raise HistoryError, 'cannot automatically merge changes'
+
             del mdinfo['handle']
-            # clean merges are only valid for deletes
-            # XXX: will be caught by a later check
-            #assert len(precursors) == 1
+
         mdinfo['precursors'] = precursors
         if precursors == []:
             assert cset['handles'][handle].has_key('add')
@@ -482,7 +529,7 @@ def _update_mini_dag(co, changedbs, helper, handles, cset, txn):
         dagdb.put(handle + point, bencode(mdinfo), txn=txn)
         indexdb.put(handle + bnum, point, txn=txn)
 
-    return
+    return untouched
 
 def simplify_precursors(co, handle, changedbs, pres, txn):
     # map big DAG precursors to little DAG
@@ -527,6 +574,14 @@ def _update_helper_content(co, handle, point, precursors, hinfo, txn):
 def _update_helper_name(co, handle, point, precursors, hinfo, txn):
     oinfo = {}
     if hinfo.has_key('name'):
+        # XXX: work around some broken history, remove this later
+        # check to see if the file was already deleted.
+        for pre in precursors:
+            phinfo = bdecode(co.names.dagdb.get(handle + pre[0], txn=txn))
+            if phinfo['handle'].has_key('delete'):
+                oinfo = phinfo['handle']
+                return oinfo
+
         oinfo['name'] = hinfo['name']
         try:
             oinfo['parent'] = hinfo['parent']
@@ -539,14 +594,15 @@ def _update_helper_name(co, handle, point, precursors, hinfo, txn):
             pass
 
     if hinfo.has_key('add'):
+        assert len(precursors) == 0
         oinfo['add'] = 1
     elif hinfo.has_key('delete'):
+        # part of making lookups faster
         phinfo = bdecode(co.names.dagdb.get(handle + precursors[0][0], txn=txn))
         oinfo = phinfo['handle']
         oinfo['delete'] = 1
     else:
         # something to make name lookups faster
-        deleted = False
         for pre in precursors:
             phinfo = bdecode(co.names.dagdb.get(handle + pre[0], txn=txn))
             if phinfo.has_key('delete'):
@@ -581,9 +637,10 @@ def changes_in_branch(co, lpoints, bpoints, txn, cache=None):
 
     return changes
 
-def handles_in_branch(co, lpoints, bpoints, txn, cache=None, deleted_modified=False):
+def handles_in_branch(co, lpoints, bpoints, txn, cache=None):
     points = bpoints[:]
-    seen, named, modified, deleted = {}, {}, {}, {}
+    seen = {}
+    named, modified, added, deleted = {}, {}, {}, {}
     while len(points):
         pnext = points.pop()
         if seen.has_key(pnext):
@@ -600,21 +657,18 @@ def handles_in_branch(co, lpoints, bpoints, txn, cache=None, deleted_modified=Fa
         else:
             pinfo = bdecode(co.lcrepo.get(pnext, txn=txn))
         for handle, hinfo in pinfo['handles'].items():
+            if hinfo.has_key('add'):
+                added[handle] = 1
             if hinfo.has_key('name'):
                 named[handle] = 1
             if hinfo.has_key('hash'):
                 modified[handle] = 1
             if hinfo.has_key('delete'):
-                named[handle] = 1
-                if not deleted_modified:
-                    deleted[handle] = 1
+                deleted[handle] = 1
 
         points.extend(pinfo['precursors'])
 
-    for handle in deleted.keys():
-        if modified.has_key(handle):
-            del modified[handle]
-    return (named.keys(), modified.keys())
+    return (named.keys(), modified.keys(), added.keys(), deleted.keys())
 
 def handle_last_modified(co, changedbs, handle, change, txn):
     retval = _handle_last_modified(co, changedbs, handle, change, txn)
@@ -698,7 +752,9 @@ def handle_name_at_point(co, handle, point, txn, lookup=True):
         change = handle_last_modified(co, co.names, handle, point, txn)
         if change is None:
             return None
-    return bdecode(co.names.dagdb.get(handle + change, txn=txn))['handle']
+    blinfo = co.names.dagdb.get(handle + change, txn=txn)
+    linfo  = bdecode(blinfo)
+    return linfo['handle']
 
 def __handle_name_at_point(co, handle, point, txn, docache=True):
     #key = handle + point
@@ -742,6 +798,14 @@ def _handle_name_from_precursors(precursors, resolution, point):
 
     return
 
+def _deleted_in_precursors(precursors):
+    deleted = True
+    for pre in precursors:
+        if not pre.has_key('delete'):
+            deleted = False
+            break
+    return deleted
+
 def _handle_name_at_point(co, handle, point, txn, docache=False):
     cset = bdecode(co.names.dagdb.get(handle + point, txn=txn))
 
@@ -756,7 +820,9 @@ def _handle_name_at_point(co, handle, point, txn, docache=False):
     state = {}
     if not cset.has_key('handle'):
         if len(cset['precursors']) != 1:
-            raise HistoryError, 'implicit name merges not permitted'
+            # we don't require deletes to be explicitly merged
+            if not _deleted_in_precursors(precursors):
+                raise HistoryError, 'implicit name merges not permitted'
         state = precursors[0]
     elif cset['handle'].has_key('delete'):
         state['delete'] = 1
@@ -810,13 +876,43 @@ def _mini_dag_refcount(co, handle, point, txn, cache=None, info_cache=None):
             points.append(p)
     return cache
 
+def _merge_check_deps(node, args):
+    co, handle, txn, hcache = args[0], args[1], args[2], args[3]
+    hinfo = bdecode(co.contents.dagdb.get(handle + node, txn=txn))
+    hcache[node] = hinfo
+
+    return [p[0] for p in hinfo['precursors']]
+
+def handle_merge_check(co, handle, point, txn):
+    change = handle_last_modified(co, co.contents, handle, point, txn)
+    if change is None:
+        return None
+
+    hcache = {}
+    cDFS = DFS(_merge_check_deps, [co, handle, txn, hcache])
+    cDFS.search(change)
+    ordering = cDFS.result()
+
+    for point in ordering:
+        hinfo = hcache[point]
+
+        if not hinfo.has_key('handle') and len(hinfo['precursors']) > 1:
+            raise HistoryError, 'cannot automatically merge changes'
+
+    return
+
+def _content_deps(node, args):
+    hcache = args[0]
+    return [p[0] for p in hcache[node]['precursors']]
+
 def handle_contents_at_point(co, handle, point, txn, dcache=None, replayfunc=replay):
     if dcache is None:
         dcache = {}
     #staticinfo = bdecode(co.staticdb.get(handle, txn=txn))
     staticinfo = db_get(co, co.staticdb, handle, txn)
     if staticinfo['type'] != 'file':
-        raise ValueError, 'no contents for non-file'
+        raise ValueError, 'Expected type \"file\", got type \"%s\"' % \
+              (staticinfo['type'],)
 
     change = handle_last_modified(co, co.contents, handle, point, txn)
     if change is None:
@@ -827,46 +923,17 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None, replayfunc=rep
     hfile = open(path.join(co.cpath, binascii.hexlify(handle)), 'rb')
     #hfile = open(path.join(co.cpath, 'diffs'), 'rb')
 
-    points = [change]
-    while len(points):
-        point = points[-1]
+    cDFS = DFS(_content_deps, [hcache])
+    cDFS.search(change)
+    ordering = cDFS.result()
 
-        # we may have already done this one
-        if cache.has_key(point) and cache[point].has_key('info'):
-            points.pop()
-            continue
+    for point in ordering:
+        hinfo = hcache[point]
 
-        # cache this, since we visit most nodes twice
-        if hcache.has_key(point):
-            hinfo = hcache[point]
-        else:
-            hinfo = bdecode(co.contents.dagdb.get(handle + point, txn=txn))
-            hcache[point] = hinfo
-
-        # check if we've got the precursors
-        dirty = False
-        for pre, foo in hinfo['precursors']:
-            if not cache[pre].has_key('info'):
-                dirty = True
-                points.append(pre)
-        if dirty:
-            continue
-        points.pop()
-
-        # read the diff
-        if dcache.has_key(point):
-            diff = dcache[point]
-        else:
-            diff = _read_diff(hinfo, hfile)
-        if diff is None:
-            if len(hinfo['precursors']) > 1:
-                raise HistoryError, 'cannot automatically merge changes'
-            # sometimes handle_last_modified isn't optimized
-            assert points == []
-            change = hinfo['precursors'][0][0]
-            continue
-
-        diff = bdecode(zlib.decompress(diff))
+        if hinfo['handle'].has_key('delete'):
+            # Pick contents of an ancestor, doesn't really matter
+            cache[point]['info'] = cache[hinfo['precursors'][0][0]].copy()
+            cache[point]['info']['delete'] = hinfo['handle']['delete']
 
         # put together the precursor list and decrement refcounts
         precursors = []
@@ -876,6 +943,24 @@ def handle_contents_at_point(co, handle, point, txn, dcache=None, replayfunc=rep
             cache[pre]['refcount'] -= 1
             if cache[pre]['refcount'] == 0:
                 del cache[pre]
+
+        if hinfo['handle'].has_key('delete'):
+            # This has to be done after decrementing refcounts, whereas the
+            # content setting has to be done before.
+            continue
+
+        # read the diff
+        if dcache.has_key(point):
+            diff = dcache[point]
+        else:
+            diff = _read_diff(hinfo, hfile)
+
+        if diff is None:
+            if len(hinfo['precursors']) > 1:
+                raise HistoryError, 'cannot automatically merge changes'
+            raise HistoryError, 'change with no diff'
+
+        diff = bdecode(zlib.decompress(diff))
 
         # finally, get the contents
         cache[point]['info'] = _handle_contents_at_point(point, hinfo,

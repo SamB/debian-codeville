@@ -35,17 +35,17 @@ def standard_diff(lines1, lines2):
             bt = "%d,%d" % (j+1, j2)
         if i2 > i:
             if j2 > j:
-                text.extend(at, 'c', bt, "\n")
+                text.extend([at, 'c', bt, "\n"])
             else:
-                text.extend(at, 'd', bt, "\n")
+                text.extend([at, 'd', bt, "\n"])
         else:
-            text.extend(at, 'a', bt, "\n")
+            text.extend([at, 'a', bt, "\n"])
         for i in xrange(i, i2):
-            text.append("< " + lines1[i])
+            text.extend(["< ", lines1[i], "\n"])
         if i2 > i and j2 > j:
             text.append("---\n")
         for j in xrange(j, j2):
-            text.extend("> ", lines2[j])
+            text.extend(["> ", lines2[j], "\n"])
         i = i2 + l
         j = j2 + l
 
@@ -114,14 +114,30 @@ def unified_diff(lines1, lines2):
     return ''.join(text)
 
 if __name__ == '__main__':
-    from sys import argv
+    from sys import argv, exit
+    from getopt import gnu_getopt, GetoptError
 
-    h = open(argv[1], 'rb')
+    try:
+        optlist, args = gnu_getopt(argv, 'u')
+    except GetoptError, msg:
+        print "Unknown option \"%s\"" % (msg.args[0],)
+        exit(1)
+
+    if len(args) != 3:
+        print "Usage: %s [-u] file1 file2" % (args[0],)
+        exit(1)
+
+    diff_func = standard_diff
+    for opt, arg in optlist:
+        if opt == '-u':
+            diff_func = unified_diff
+
+    h = open(args[1], 'rb')
     pre_lines = [line[:-1] for line in h.readlines()]
     h.close()
 
-    h = open(argv[2], 'rb')
+    h = open(args[2], 'rb')
     post_lines = [line[:-1] for line in h.readlines()]
     h.close()
 
-    print diff_file(pre_lines, post_lines)
+    print diff_func(pre_lines, post_lines)

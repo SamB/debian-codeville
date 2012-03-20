@@ -6,7 +6,7 @@ from db import db
 from history import roothandle, dmerge, rename_conflict_check
 from history import handle_name_at_point, __handle_name_at_point
 from history import _handle_name_at_point
-from history import handle_contents_at_point, handles_in_branch
+from history import handle_contents_at_point
 from history import handle_last_modified
 from history import _name_use_count, _children_count
 from history import write_diff, write_index, db_get, db_put, HistoryError
@@ -15,6 +15,7 @@ from history import _is_ancestor
 from merge import find_resolution
 import os
 from os import path
+from path import breakup
 import sha
 import stat
 from time import time
@@ -22,39 +23,6 @@ import zlib
 
 class CommitError(Exception):
     pass
-
-def mdir(d):
-    try:
-        os.makedirs(d)
-    except OSError:
-        pass
-
-def _filepath(local, file):
-    llocal = breakup(path.abspath(local))
-    lfile = breakup(path.abspath(file))
-    if lfile[:len(llocal)] != llocal:
-        raise ValueError
-    fname = ''
-    for d in lfile[len(llocal):]:
-        fname = path.join(fname, d)
-    return (lfile, fname)
-
-def breakup(s):
-    def _breakup(s):
-        if s == '':
-            return []
-        a, b = path.split(s)
-        return _breakup(a) + [b]
-
-    drive, s = path.splitdrive(s)
-    bdrive, bsep = [], []
-    if drive != '':
-        bdrive = [drive]
-        bsep   = [os.sep]
-    if s.startswith(os.sep):
-        bsep = [os.sep]
-        s = s[len(os.sep):]
-    return bdrive + bsep + _breakup(s)
 
 def new_handle(co, txn):
     """Create a temporary handle for new files in the working copy"""

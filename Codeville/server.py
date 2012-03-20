@@ -9,7 +9,7 @@ from entropy import random_string, string_to_long, long_to_string
 from history import sync_history, is_ancestor
 from history import roothandle, rootnode
 from history import read_diff, WriteDiff, write_changeset
-from history import handles_in_branch, handle_contents_at_point
+from history import handles_in_branch, handle_contents_at_point, handle_merge_check
 from history import handle_name_at_point, handle_last_modified, HistoryError
 from history import clean_merge_point, dump_changeinfo
 import hmac
@@ -551,7 +551,7 @@ class ServerHandler(ServerRepository):
                     raise HistoryError, 'not an incremental backup'
                 point = pinfo['precursors'][0]
 
-        modified = handles_in_branch(self, [head], [request['head']], txn, deleted_modified=True)[1]
+        modified = handles_in_branch(self, [head], [request['head']], txn)[1]
         unlocked = self._lock_files(s, mid, modified)
 
         # bump the reference count by the locks we don't have
@@ -617,18 +617,9 @@ class ServerHandler(ServerRepository):
             if checked:
                 continue
 
-            # if it's a new file, then it's been verified before
-            change = handle_last_modified(self, self.contents,
-                                          handle, head, txn)
-            if change is None:
-                continue
-
-            # if it's not a merge, then it's been verified before
-            if is_ancestor(self, change, req_head, txn):
-                continue
-
-            # it's a merge, so we have to check it
-            handle_contents_at_point(self, handle, new_head, txn)
+            # if there are diffs then some other checkin verified them
+            # we only need to make sure there aren't any implicit merges
+            handle_merge_check(self, handle, new_head, txn)
 
         # complete everything and clean up
         self.txn_commit(txn)
