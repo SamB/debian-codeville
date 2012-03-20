@@ -494,6 +494,92 @@ def test_replay():
     assert replay([(['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'a', 'a', 'a', 'a'], ['a'])], [[(2, 0, 2)]], [], 'z')[:2] == (['ccc', 'ddd'], ['z', 'a', 'a'])
     assert replay([(['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'a', 'a', 'a', 'a'], ['a'])], [[(0, 0, 2)]], [], 'z')[:2] == (['aaa', 'bbb'], ['a', 'a', 'z'])
 
+def annotate(precursors, matches, newlines, current_point):
+    # figure out how long the result is going to be
+    resultlength = 0
+    for i in matches:
+        if not len(i):
+            continue
+        matchold, matchnew, matchlen = i[-1]
+        if matchnew + matchlen > resultlength:
+            resultlength = matchnew + matchlen
+    try:
+        lastline = newlines[-1][0] + len(newlines[-1][1])
+        if lastline > resultlength:
+            resultlength = lastline
+    except IndexError:
+        pass
+
+    selector = SelectLinePoint()
+
+    r       = [None] * resultlength
+    rpoints = [None] * resultlength
+
+    for i in xrange(len(matches)):
+        selector.push(precursors[i][2])
+        for (matchold, matchnew, matchlen) in matches[i]:
+            pre_lines = precursors[i][0]
+            pre_lp = precursors[i][1]
+            for j in xrange(matchlen):
+                new_pos = matchnew + j
+                old_pos = matchold + j
+
+                # fill in lines from matching sections
+                v = pre_lines[old_pos]
+                if r[new_pos] is not None and r[new_pos] != v:
+                    raise MergeError, 'conflicting values'
+                r[new_pos] = v
+
+                # fill in annotation
+                rpoints[new_pos] = selector.select(rpoints[new_pos], pre_lp[old_pos])
+
+    points = selector.dump()
+
+    # fill in annotation for new lines
+    for (begin, lines) in newlines:
+        for i in xrange(len(lines)):
+            # fill in result lines
+            if r[begin + i] is not None:
+                raise MergeError, 'match covers newline'
+            r[begin + i] = lines[i]
+
+            # then the current annotation
+            assert rpoints[begin + i] is None
+            rpoints[begin + i] = current_point
+
+    # sanity checks
+    if None in r:
+        raise MergeError, 'unfilled line'
+    if None in rpoints:
+        raise MergeError, 'unset annotation'
+    return (r, rpoints, points)
+
+def find_annotation(precursors, resolution):
+    result = [None] * len(resolution)
+
+    selector = SelectLinePoint()
+
+    for i in xrange(len(precursors)):
+        match = find_matches(precursors[i][0], resolution)
+
+        pre = precursors[i][0]
+        pre_line_points = precursors[i][1]
+        selector.push(precursors[i][2])
+
+        for (matchold, matchnew, matchlen) in match:
+            for j in xrange(matchlen):
+                result[matchnew + j] = selector.select(result[matchnew + j], pre_line_points[matchold + j])
+
+    return result
+
+def test_annotate():
+    assert annotate([(['aaa', 'bbb'], ['a', 'b'], ['a', 'b'])], [[(0, 0, 2)]], [(2, ['ccc', 'ddd'])], 'z')[:2] == (['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'b', 'z', 'z'])
+    assert annotate([(['aaa', 'bbb'], ['a', 'b'], ['a', 'b'])], [[(0, 2, 2)]], [(0, ['ccc', 'ddd'])], 'z')[:2] == (['ccc', 'ddd', 'aaa', 'bbb'], ['z', 'z', 'a', 'b'])
+    assert annotate([(['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'b', 'c', 'd'], ['a', 'b', 'c', 'd']), (['bbb', 'ccc', 'ddd', 'eee'], ['e', 'c', 'f', 'g'], ['e', 'c', 'f', 'g'])], [[(0, 0, 4)], [(0, 1, 4)]], [], 'z')[:2] == (['aaa', 'bbb', 'ccc', 'ddd', 'eee'], ['a', 'e', 'c', 'f', 'g'])
+    assert annotate([(['aaa', 'bbb', 'ccc', 'ddd', 'eee'], ['a', 'a', 'a', 'a', 'a'], ['a'])], [[(0, 0, 2), (3, 2, 2)]], [], 'z')[:2] == (['aaa', 'bbb', 'ddd', 'eee'], ['a', 'a', 'a', 'a'])
+    assert annotate([(['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'a', 'a', 'a'], ['a'])], [[(2, 0, 2)]], [], 'z')[:2] == (['ccc', 'ddd'], ['a', 'a'])
+    assert annotate([(['aaa', 'bbb', 'ccc', 'ddd'], ['a', 'a', 'a', 'a'], ['a'])], [[(0, 0, 2)]], [], 'z')[:2] == (['aaa', 'bbb'], ['a', 'a'])
+
 try:
     import psyco
     psyco.bind(replay)

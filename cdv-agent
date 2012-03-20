@@ -3,6 +3,16 @@
 # Written by Ross Cohen
 # See LICENSE.txt for license information.
 
+try:
+    import Codeville.db
+except ImportError:
+    import sys, os.path
+    from os.path import dirname, abspath, join
+    pypath = "lib/python%d.%d/site-packages" % \
+                (sys.version_info[0], sys.version_info[1])
+    base   = dirname(dirname(abspath(sys.argv[0])))
+    sys.path[0:0] = [ join(base, pypath) ]  # first place to look
+
 from Codeville.agent import Agent
 from getopt import getopt, GetoptError
 import os

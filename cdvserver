@@ -3,6 +3,16 @@
 # Written by Ross Cohen
 # See LICENSE.TXT for license information.
 
+try:
+    import Codeville.db
+except ImportError:
+    import sys, os.path
+    from os.path import dirname, abspath, join
+    pypath = "lib/python%d.%d/site-packages" % \
+                (sys.version_info[0], sys.version_info[1])
+    base   = dirname(dirname(abspath(sys.argv[0])))
+    sys.path[0:0] = [ join(base, pypath) ]  # first place to look
+
 from Codeville.db import VersionMismatchException
 from Codeville.db import check_format_version, check_rebuild_version
 from Codeville.db import write_rebuild_version
@@ -38,15 +48,17 @@ def run(args):
         configfile = '/etc/cdvserver.conf'
 
     # parse command line arguments
-    rebuild = False
+    initialize = False
+    rebuild    = False
     try:
-        optlist, args = getopt(args, 'bc:df:l:no:p:ru:')
+        optlist, args = getopt(args, 'bc:df:il:no:p:ru:')
     except GetoptError:
         print """Valid options are:
 	-b
 	-c <configfile>
 	-d
 	-f <datadir>
+	-i
 	-l <logfile>
 	-n
 	-o <port>
@@ -95,6 +107,8 @@ def run(args):
             daemonize = False
         elif opt == '-f':
             config.set('control', 'datadir', arg)
+        elif opt == '-i':
+            initialize = True
         elif opt == '-l':
             config.set('control', 'logfile', arg)
         elif opt == '-o':
@@ -109,24 +123,35 @@ def run(args):
     if len(args) != 0:
         print 'Command takes no arguments'
         return 1
-    if not path.exists(path.join(config.get('control', 'datadir'),
-                                 'codeville_repository')):
-        print config.get('control', 'datadir') + " has no file named 'codeville_repository', add one to mark it as a repository"
-        return 1
+
+    metadata_dir = path.join(config.get('control', 'datadir'), '.cdv')
+
+    # make sure we can read the repository format
+    repo_marker = path.join(config.get('control', 'datadir'),
+                            'codeville_repository')
+    if initialize:
+        if path.exists(repo_marker):
+            print config.get('control', 'datadir') + " is already initialized as a repository"
+            return 1
+        crp = open(repo_marker, 'w')
+        crp.close()
+
+    else:
+        if not path.exists(repo_marker):
+            print config.get('control', 'datadir') + " is not a repository, start with -i to initalize one"
+            return 1
+
+        try:
+            check_format_version(metadata_dir)
+        except VersionMismatchException, versions:
+            print "error - expected version %d does not match repository version %d, you probably need to run cdvupgrade." % versions.args
+            return 1
 
     # sanity checks
     try:
         int(config.get('control', 'port'))
     except ValueError:
         print 'Invalid port %s' % config.get('control', 'port')
-        return 1
-
-    # make sure we can read the repository format
-    metadata_dir = path.join(config.get('control', 'datadir'), '.cdv')
-    try:
-        check_format_version(metadata_dir)
-    except VersionMismatchException, versions:
-        print "error - expected version %d does not match repository version %d, you probably need to run cdvupgrade." % versions.args
         return 1
 
     # start the server
@@ -191,7 +216,7 @@ def run(args):
                 sh.close()
                 return 1
 
-        sh.db_init()
+        sh.db_init(init=initialize)
 
         pid = os.fork()
         if pid:
@@ -202,7 +227,7 @@ def run(args):
         pidhandle.close()
 
     else:
-        sh.db_init()
+        sh.db_init(init=initialize)
 
     if rebuild:
         print 'Rebuilding...'

@@ -221,7 +221,8 @@ class ClientHandler:
         del lstate['requests'][rstate['changenum']]
         lstate['count'] -= 1
         if lstate['count'] == 0:
-            sync_history(self.co, lstate['head'], lstate['txn'], cache=lstate['changes'])
+            sync_history(self.co, lstate['head'], lstate['txn'],
+                                    cache=lstate['changes'])
             named, modified = handles_in_branch(self.co, lstate['heads'], [lstate['head']], lstate['txn'], cache=lstate['changes'], deleted_modified=True)
             del lstate['changes']
             self._update_checks(s, rstate['ref'], named, modified)

@@ -3,6 +3,16 @@
 # Written by Ross Cohen
 # see LICENSE.txt for license information
 
+try:
+    import Codeville.db
+except ImportError:
+    import sys, os.path
+    from os.path import dirname, abspath, join
+    pypath = "lib/python%d.%d/site-packages" % \
+                (sys.version_info[0], sys.version_info[1])
+    base   = dirname(dirname(abspath(sys.argv[0])))
+    sys.path[0:0] = [ join(base, pypath) ]  # first place to look
+
 from Codeville.bencode import bdecode, bencode
 from Codeville.client import find_co, Checkout, _rebuild_fndb, PathError
 from Codeville.server import ServerRepository
@@ -87,9 +97,8 @@ def upgrade_server(repo_dir):
     old_repo._db_init(repo_dir, '', rw=False)
 
     # since we're creating a new metadata directory, we can upgrade in place
-    os.makedirs(path.join(repo_dir, '.cdv'))
     new_repo = ServerRepository()
-    new_repo._db_init(repo_dir)
+    new_repo._db_init(repo_dir, init=True)
 
     txn = new_repo.txn_begin()
 

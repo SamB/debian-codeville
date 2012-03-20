@@ -2,7 +2,7 @@ import binascii
 from Codeville.bencode import bdecode, bencode
 from Codeville.client_helpers import create_handle, gen_diff
 from Codeville.DFS import DFS
-from Codeville.history import sync_history, verify_history, write_changeset
+from Codeville.history import sync_history, write_changeset
 from Codeville.history import roothandle, rootnode
 from Codeville.history import read_diff, write_diff, write_index
 from Codeville.history import handle_contents_at_point
@@ -263,7 +263,6 @@ def convert_cset(UR, point):
 
     # diff generation depends on history syncing
     named, modified = sync_history(UR.new_repo, new_point, UR.txn)
-    verify_history(UR.new_repo, new_point, named, [], UR.txn)
 
     for new_handle in modified:
         handle_contents_at_point(UR.new_repo, new_handle, new_point, UR.txn)

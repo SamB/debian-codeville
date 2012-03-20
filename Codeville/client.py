@@ -15,11 +15,12 @@ from client_helpers import mark_modified_files, find_update_files, find_commit_f
 from client_net import ClientHandler, ClientError, ServerError
 from client_net import network_prep, authenticate
 from db import db, ChangeDBs, write_format_version, write_rebuild_version
+from DFS import DFS
 from diff import unified_diff
 from getpass import getpass
 from history import HistoryError, roothandle, rootnode
 from history import dmerge, rename_conflict_check, db_get
-from history import sync_history, verify_history, is_ancestor, _is_ancestor
+from history import sync_history, is_ancestor, _is_ancestor
 from history import handle_contents_at_point, handles_in_branch
 from history import handle_name_at_point, fullpath_at_point
 from history import handle_last_modified
@@ -27,7 +28,9 @@ from history import short_id, long_id, write_changeset, rebuild_from_points
 from history import server_to_tuple, tuple_to_server, repo_head
 from history import dump_changeinfo
 from history import pretty_print_dag, pretty_print_big_dag
-from merge import find_conflict, find_conflict_multiple_safe
+from history import simplify_precursors
+from merge import find_conflict, find_conflict_multiple_safe, find_annotation
+import merge
 from network import NetworkError
 import os
 from os import path
@@ -36,9 +39,9 @@ import re
 from sets import Set
 import sha
 import stat
-from sys import maxint, stdout, version_info, platform
+from sys import maxint, stdout, version_info, platform, stderr
 import tempfile
-from time import ctime
+from time import ctime, strftime, localtime
 
 assert version_info >= (2,3), "Python 2.3 or higher is required"
 
@@ -505,7 +508,7 @@ def _update_helper(co, uinfo, named, modified, txn):
         if info.has_key('nmerge'):
             merge = False
             for head in old_heads:
-                change = handle_last_modified(co, co.names, handle, head, txn, opt=True)
+                change = handle_last_modified(co, co.names, handle, head, txn)
                 if change is not None and not is_ancestor(co, change, rhead, txn):
                     merge = True
             if not merge:
@@ -522,17 +525,27 @@ def _update_helper(co, uinfo, named, modified, txn):
 
     # keep track of what's been merged because we have to generate explicit
     # merge information for them later.
-    for handle in named:
-        for head in heads:
-            change = handle_last_modified(co, co.names, handle, head, txn)
-            if change is not None and not is_ancestor(co, change, rhead, txn):
-                set_edit(co, handle, {'nmerge': 1}, txn)
+    lnamed, lmodified = handles_in_branch(co, [rhead], heads, txn)
 
-    for handle in modified:
-        for head in heads:
-            change = handle_last_modified(co, co.contents, handle, head, txn)
-            if change is not None and not is_ancestor(co, change, rhead, txn):
-                set_edit(co, handle, {'cmerge': 1}, txn)
+    slnamed, snamed = Set(lnamed), Set(named)
+    for handle in slnamed & snamed:
+        set_edit(co, handle, {'nmerge': 1}, txn)
+
+    slmodified, smodified = Set(lmodified), Set(modified)
+    for handle in slmodified & smodified:
+        set_edit(co, handle, {'cmerge': 1}, txn)
+
+    #for handle in named:
+    #    for head in heads:
+    #        change = handle_last_modified(co, co.names, handle, head, txn)
+    #        if change is not None and not is_ancestor(co, change, rhead, txn):
+    #            set_edit(co, handle, {'nmerge': 1}, txn)
+
+    #for handle in modified:
+    #    for head in heads:
+    #        change = handle_last_modified(co, co.contents, handle, head, txn)
+    #        if change is not None and not is_ancestor(co, change, rhead, txn):
+    #            set_edit(co, handle, {'cmerge': 1}, txn)
 
     # clear the name cache
     co.handle_name_cache = {}
@@ -753,7 +766,7 @@ def update(co, remote, merge=True):
         try:
             os.rmdir(path.join(local, lfile))
         except OSError:
-            print 'warning - %s not be deleted because it is not empty' % \
+            print 'warning - %s could not be deleted because it is not empty' % \
                   (lfile,)
 
     for handle in names.keys():
@@ -832,6 +845,9 @@ def cli_construct(co, spoint):
             print 'warning - %s' % (str(msg),)
 
     txn = co.txn_begin()
+
+    # clear out whatever we were editing
+    co.editsdb.truncate(txn)
 
     # rename everything to the right place
     co.modtimesdb.truncate(txn)
@@ -930,8 +946,8 @@ def populate_local_repos(co, ltxn):
     co.linforepo.put('branchmax', bencode(0), txn=ltxn)
     co.linforepo.put('lasthandle', bencode(0), txn=ltxn)
 
-    named, modified = sync_history(co, head, ltxn)
-    verify_history(co, head, named, modified, ltxn)
+    sync_history(co, head, ltxn)
+    return
 
 def _list_merge_files(co):
     if co.repo is None:
@@ -1051,7 +1067,7 @@ def _commit_helper(co, commit_files):
 
     return fcommit_files, comment
 
-def commit(co, remote, comment, backup=False, files=list()):
+def commit(co, remote, comment, tstamp=None, backup=False, files=list()):
     try:
         if remote is None:
             if co.user is None:
@@ -1104,7 +1120,7 @@ def commit(co, remote, comment, backup=False, files=list()):
     point = None
     try:
         if not backup:
-            point = gen_changeset(co, commit_files, comment, repohead, ltxn)
+            point = gen_changeset(co, commit_files, comment, repohead, ltxn, tstamp=tstamp)
     except HistoryError, msg:
         co.txn_abort(ltxn)
         print 'error - ' + str(msg)
@@ -1112,8 +1128,7 @@ def commit(co, remote, comment, backup=False, files=list()):
 
     if point is not None:
         try:
-            named, modified = sync_history(co, point, ltxn)
-            verify_history(co, point, named, modified, ltxn)
+            sync_history(co, point, ltxn)
         except HistoryError, msg:
             print 'commit failed: ' + str(msg)
             print 'THIS IS REALLY BAD!!!'
@@ -1698,60 +1713,32 @@ def _history_increment(co, handles, precursors, changes):
                 changes.setdefault(change, {})[handle] = 1
     return
 
-def _history_recurse(co, pres, point, owner, time, limit, skip, v, changes):
-    def _history_print(hinfo, limit, skip):
-        if skip:
-            skip -= 1
+def _history_deps(node, args):
+    co, cutoffs = args[0], args[1]
+    if len(cutoffs) and _is_ancestor(co, node, cutoffs, None):
+        return []
+    cset = bdecode(co.lcrepo.get(node))
+    return cset['precursors']
 
-        else:
-            _print_change(co, point, hinfo, v, owner=owner, time=time)
-            if v:
-                print '-' * 78
-            else:
-                print
-            limit -= 1
+def _owner_deps(node, args):
+    co, limit = args[0], args[1]
 
-        return limit, skip
+    # heuristic shortcut
+    limit -= 1
+    if limit == 0:
+        return []
+    args[1] = limit
 
-
-    stack = [(pres, point)]
-    while len(stack):
-        pres, point = stack.pop()
-
-        if _is_ancestor(co, point, pres, None):
-            continue
-
-        hinfo = bdecode(co.lcrepo.get(point))
-
-        # a change is visible is it's not a clean merge and it was asked for
-        visible = False
-        if changes is None or changes.has_key(point):
-            visible = True
-
-        if clean_merge_point(hinfo):
-            visible = False
-
-        # figure out the next set of changes to print
-        if changes is not None and changes.has_key(point):
-            _history_increment(co, changes[point].keys(), hinfo['precursors'],
-                               changes)
-            del changes[point]
-
-        # print it if we need to
-        if visible:
-            limit, skip = _history_print(hinfo, limit, skip)
-
-        if not limit:
-            return limit, skip
-
-        for i in xrange(len(hinfo['precursors'])):
-            stack.append((pres + hinfo['precursors'][:i],
-                          hinfo['precursors'][i]))
-
-    return limit, skip
+    cset = bdecode(co.lcrepo.get(node))
+    try:
+        return [cset['precursors'][0]]
+    except IndexError:
+        pass
+    return []
 
 def history(co, head, limit, skip, v, files):
     repohead = None
+    heads = None
     if head is not None:
         heads = [head]
     else:
@@ -1764,23 +1751,6 @@ def history(co, head, limit, skip, v, files):
         else:
             heads.insert(0, repohead)
 
-    # make an initial list of points to print based on user-specified files
-    changes = None
-    if files != []:
-        changes = {}
-        handles = [handle for handle, expanded in Glob(co, files).db_walk()]
-        _history_increment(co, handles, heads, changes)
-
-    # everything not in the default repo is 'local', indicates what will get
-    # committed nicely.
-    owner = 'local'
-    for i in xrange(len(heads)-1, 0, -1):
-        limit, skip = _history_recurse(co, heads[:i], heads[i],
-                                       owner, None,
-                                       limit, skip, v, changes)
-
-    # everything after this point is in the given repository
-    owner = '----'
     head = heads.pop(0)
 
     # the repository head may have more than we have merged locally
@@ -1788,19 +1758,80 @@ def history(co, head, limit, skip, v, files):
         while not _is_ancestor(co, head, heads, None):
             head = bdecode(co.lcrepo.get(head))['precursors'][0]
 
-    # walk through the head path to the rootnode
-    hinfo = bdecode(co.lcrepo.get(head))
-    while limit and head != rootnode:
+    # make an initial list of points to print based on user-specified files
+    owner_cutoff = limit + skip
+    changes = None
+    if files != []:
+        changes = {}
+        handles = [handle for handle, expanded in Glob(co, files).db_walk()]
+        _history_increment(co, handles, heads, changes)
+        # the heuristic breaks if we're not printing everything
+        owner_cutoff = -1
+
+    # get a list of the clean merge heads for this repository
+    dfs = DFS(_owner_deps, [co, owner_cutoff + 1])
+    dfs.search(head)
+    owners = dfs.result()
+
+    # sort all the history points in reverse print order
+    cutoffs = []
+    if owners[0] != rootnode:
+        cutoffs = owners[0:1]
+    dfs = DFS(_history_deps, [co, cutoffs])
+    for head in heads:
+        dfs.search(head)
+    ordering = dfs.result()
+    ordering.reverse()
+    # pop off the root node
+    if ordering[-1] == rootnode:
+        ordering.pop()
+
+    owner = 'local'
+    time = None
+    for point in ordering:
+        hinfo = bdecode(co.lcrepo.get(point))
+
+        clean = False
         if clean_merge_point(hinfo):
-            owner = short_id(co, head)
+            clean = True
 
-        next_head = hinfo['precursors'][0]
-        limit, skip = _history_recurse(co, [next_head], head,
-                                       owner, hinfo['time'],
-                                       limit, skip, v, changes)
+        if point == owners[-1]:
+            # committed change, but we don't know the server merge change
+            owners.pop()
+            time  = hinfo['time']
+            owner = '----'
 
-        head = next_head
-        hinfo = bdecode(co.lcrepo.get(head))
+            if clean:
+                # this is the server merge change
+                owner = short_id(co, point)
+                assert changes is None or not changes.has_key(point)
+                continue
+
+        # only display if it's not a clean merge and it was asked for
+        if clean:
+            continue
+
+        if changes is not None and not changes.has_key(point):
+            continue
+
+        # figure out the next set of changes to print
+        if changes is not None and changes.has_key(point):
+            _history_increment(co, changes[point].keys(), hinfo['precursors'],
+                               changes)
+            del changes[point]
+
+        if skip > 0:
+            skip -= 1
+            continue
+
+        if limit == 0:
+            break
+        limit -=1
+
+        _print_change(co, point, hinfo, v, owner=owner, time=time)
+        if v:
+            print '-' * 78,
+        print
 
     return 0
 
@@ -1912,6 +1943,86 @@ def revert(co, files, unmod_flag):
     print 'revert succeeded'
     return 0
 
+def annotate(co, rev, files):
+    """Print each line of files with information on the last modification"""
+    if rev == 'repo':
+        rev = repo_head(co, co.repo)
+    elif rev != 'local':
+        rev = long_id(co, rev)
+
+    if len(files) == 0:
+        files = ['...']
+
+    if rev == 'local':
+        precursors = bdecode(co.linforepo.get('heads'))
+        
+        repohead = repo_head(co, co.repo)
+        if repohead is None:
+            repohead = rootnode
+            
+        if repohead not in precursors:
+            while not _is_ancestor(co, repohead, precursors, None):
+                info = bdecode(co.lcrepo.get(repohead))
+                try:
+                    repohead = info['precursors'][0]
+                except IndexError:
+                    repohead = rootnode
+                    
+            if repohead not in precursors:
+                precursors.insert(0, repohead)
+    
+    for handle, expanded in Glob(co, files).db_walk(deletes=1):
+        sinfo = bdecode(co.staticdb.get(handle))
+        if sinfo['type'] == 'file':
+            if rev == 'local':
+                filename = handle_to_filename(co, handle)
+                file_points = []
+                pres = simplify_precursors(co, handle, co.contents, precursors, None)[0]
+                for pre, index in pres:
+                    info = handle_contents_at_point(co, handle, pre, None, replayfunc=merge.annotate)
+                    file_points.append((info['lines'], info['line points'], info['points']))
+                lfile = path.join(co.local, filename)
+                try:
+                    h = open(lfile, 'rb')
+                except IOError:
+                    print 'error - cannot open %s' % (filename,)
+                    return 1
+                lines = h.read().split('\n')
+                h.close()
+                
+                lpoints = find_annotation(file_points, lines)
+            else:
+                filename = fullpath_at_point (co, handle, rev)
+                cinfo = handle_contents_at_point(co, handle, rev, None, replayfunc=merge.annotate)
+                if cinfo is None or cinfo.has_key('delete'):
+                    if expanded:
+                        continue
+                    print 'error - cannot find %s' % (filename,)
+                    return 1
+
+                lines = cinfo['lines']
+                lpoints = cinfo['line points']
+
+            print >> stderr, 'Annotations for %s' % (filename,)
+            print >> stderr, '***************'
+            for i in xrange(len(lines)):
+                point = lpoints[i]
+                if point is None:
+                    lrev = 'local'
+                    user = '-----'
+                    time = '-----'
+                else:
+                    lrev = short_id(co, point)
+                    pinfo = bdecode(co.lcrepo.get(point))
+                    user = pinfo['user']
+                    if pinfo.has_key('time'):
+                        time = strftime('%Y-%m-%d', localtime(pinfo['time']))
+                    else:
+                        time = '-----'
+                print '%s (%s %s):' % (lrev, user, time,), lines[i]
+
+    return 0
+    
 class PathError(Exception):
     pass
 
@@ -1986,7 +2097,7 @@ def init_test(local, remote, remote2):
 
     sh = ServerHandler(sconfig)
     sh.bind(remote[1])
-    sh.db_init()
+    sh.db_init(init=True)
     sht = Thread(target = sh.listen_forever, args = [])
     sht.start()
 

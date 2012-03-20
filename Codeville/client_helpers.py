@@ -81,7 +81,7 @@ def handle_name(co, handle, txn):
         if einfo.has_key('name'):
             einfo['points'] = ['1']
             for head in heads:
-                pinfo = handle_name_at_point(co, handle, head, txn)
+                pinfo = __handle_name_at_point(co, handle, head, txn)
                 if pinfo is None:
                     continue
                 einfo['points'] = dmerge(einfo['points'], pinfo['points'])
@@ -90,7 +90,7 @@ def handle_name(co, handle, txn):
             return einfo
     state = None
     for point in heads:
-        pinfo = handle_name_at_point(co, handle, point, txn)
+        pinfo = __handle_name_at_point(co, handle, point, txn)
         if pinfo is None:
             continue
         if pinfo.has_key('delete'):
@@ -397,7 +397,7 @@ def gen_diff(co, handle, precursors, lines, txn):
 
     return None
 
-def gen_changeset(co, files, comment, repohead, txn):
+def gen_changeset(co, files, comment, repohead, txn, tstamp=None):
     def per_file_hash(co, handle, hinfo, precursors, lfile, txn):
         try:
             h = open(lfile, 'rb')
@@ -472,7 +472,7 @@ def gen_changeset(co, files, comment, repohead, txn):
         merge = False
         change = prev_change = None
         for head in precursors:
-            change = handle_last_modified(co, co.names, handle, head, txn, opt=True)
+            change = handle_last_modified(co, co.names, handle, head, txn)
             if change is None:
                 continue
 
@@ -494,7 +494,7 @@ def gen_changeset(co, files, comment, repohead, txn):
 
         # no merge, but maybe the user made an explicit change
         if not linfo.has_key('nmerge') and change is not None:
-            old_info = _handle_name_at_point(co, handle, change, txn)
+            old_info = handle_name_at_point(co, handle, change, txn, lookup=False)
             if old_info['name'] == linfo['name'] and \
                old_info['parent'] == linfo['parent']:
                 continue
@@ -580,7 +580,9 @@ def gen_changeset(co, files, comment, repohead, txn):
     if comment is not None:
         changeset['comment'] = comment
     changeset['user'] = co.user
-    changeset['time'] = int(time())
+    if tstamp is None:
+        tstamp = time()
+    changeset['time'] = int(tstamp)
 
     # put together the changeset and calculate the point
     bchangeset = bencode(changeset)
