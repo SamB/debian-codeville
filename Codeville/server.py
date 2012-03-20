@@ -158,7 +158,7 @@ class ServerHandler(ServerRepository):
         self.post_commit = []
         for pattern, action in self.config.items('post-commit'):
             try:
-                self.post_commit.append((re.compile(pattern), action))
+                self.post_commit.append((re.compile(pattern, re.I), action))
             except re.error, msg:
                 raise ServerError, 'Bad post-commit pattern \"%s\": %s' % \
                       (pattern, msg)
@@ -292,8 +292,7 @@ class ServerHandler(ServerRepository):
         socket[Flushed] = 1
         while len(queue) and socket[Flushed] == 1:
             mid, msg = queue.pop(0)
-            diff = read_diff(self, msg['handle'], msg['changenum'], None)
-            socket[Flushed] = self._send_response(s, mid, {'diff': diff})
+            self._send_diff(s, mid, msg)
 
     def connection_lost(self, s, msg):
         if self.nh.get_req_mode(s):
@@ -350,10 +349,17 @@ class ServerHandler(ServerRepository):
         resp = {'changeset': self.lcrepo.get(msg['changenum'])}
         self._send_response(s, mid, resp)
 
+    def _send_diff(self, s, mid, msg):
+        diff = read_diff(self, msg['handle'], msg['changenum'], None)
+        if diff is not None:
+            self.socket[s][Flushed] = self._send_response(s, mid, {'diff': diff})
+        else:
+            self._send_error(s, mid, 'No such diff', close=False)
+        return
+
     def _request_get_diff(self, s, mid, msg):
         if self.socket[s][Flushed] == 1:
-            diff = read_diff(self, msg['handle'], msg['changenum'], None)
-            self.socket[s][Flushed] = self._send_response(s, mid, {'diff': diff})
+            self._send_diff(s, mid, msg)
         else:
             self.socket[s][Queue].append((mid, msg))
 
@@ -722,12 +728,13 @@ class ServerHandler(ServerRepository):
     def _send_msg(self, s, msg):
         return self.nh.send_msg(s, bencode(msg))
 
-    def _send_error(self, s, mid, msg):
+    def _send_error(self, s, mid, msg, close=True):
         retval = None
         if mid is None:
             retval = self._send_msg(s, {'error': msg})
         else:
             retval = self._send_response(s, mid, {'error': msg})
+        if close:
             self._close(s)
         return retval
 

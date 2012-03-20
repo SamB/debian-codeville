@@ -326,7 +326,7 @@ def mark_modified_files(co, txn):
             continue
         lfile = path.join(local, lfile)
         try:
-            mtime = path.getmtime(lfile)
+            mtime = int(path.getmtime(lfile))
         except OSError:
             continue
         minfo = bdecode(modtimesdb.get(handle, txn=txn))
@@ -383,7 +383,8 @@ def gen_changeset(co, files, comment, repohead, txn, tstamp=None):
             diff = bencode(dinfo)
         except ValueError:
             return None
-        co.modtimesdb.put(handle, bencode(path.getmtime(lfile)), txn=txn)
+        mtime = int(path.getmtime(lfile))
+        co.modtimesdb.put(handle, bencode(mtime), txn=txn)
         hinfo['hash'] = sha.new(diff).digest()
         return zlib.compress(diff, 6)
 
@@ -514,7 +515,8 @@ def gen_changeset(co, files, comment, repohead, txn, tstamp=None):
             indices[newhandle] = write_diff(co, newhandle, diff, txn)
             # update the db accordingly
             co.modtimesdb.delete(handle, txn=txn)
-            co.modtimesdb.put(newhandle, bencode(path.getmtime(lfile)), txn=txn)
+            mtime = int(path.getmtime(lfile))
+            co.modtimesdb.put(newhandle, bencode(mtime), txn=txn)
             co.filenamesdb.put(fname, newhandle, txn=txn)
         else:
             newhandle = create_handle(precursors, hinfo)

@@ -21,6 +21,7 @@ from RawServer import RawServer
 import sha
 import SRP
 from threading import Event
+import zlib
 
 UpdateInfo = 2
 Queue = 3
@@ -129,9 +130,14 @@ class ClientHandler:
         except ValueError:
             self.close(s)
             raise NetworkError, 'bad data from server'
-        if msg.has_key('error'):
-            raise ServerError, msg['error']
+
         rstate = self.socket[s][Request][mid]
+        if msg.has_key('error'):
+            # XXX: grody hack, diffs which don't belong in history
+            if rstate['request'] == 'get diff':
+                msg['diff'] = zlib.compress(bencode(''))
+            else:
+                raise ServerError, msg['error']
         if self.response_handlers[rstate['request']](self, s, mid, msg, rstate):
             del self.socket[s][Request][mid]
 
@@ -671,7 +677,8 @@ def update_file(co, handle, pre_heads, rhead, names, dcache, txn):
     h.close()
     if conflict:
         set_edit(co, handle, {'hash': 1}, txn)
-    co.modtimesdb.put(handle, bencode(path.getmtime(lfile)), txn=txn)
+    mtime = int(path.getmtime(lfile))
+    co.modtimesdb.put(handle, bencode(mtime), txn=txn)
 
     return conflict
 
